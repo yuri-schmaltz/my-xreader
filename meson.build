@@ -12,8 +12,8 @@ major_version = version_list[0]
 minor_version = version_list[1]
 micro_version = version_list[2]
 
-api_version = '1.5'
-binary_version = '3.0.0'
+api_version = '2.0'
+binary_version = '4.0.0'
 binary_major_version = binary_version.split('.')[0]
 
 xreader_conf = configuration_data()
@@ -39,22 +39,18 @@ po_dir = join_paths(meson.source_root(), 'po')
 
 # dependencies
 cairo = dependency('cairo', version: '>= 1.14.0')
-gail = dependency('gail-3.0')
 gio = dependency('gio-2.0', version: '>= 2.36.0')
+xapp = dependency('xapp', version: '>= 1.0.0')
 glib_version = '2.36.0'
 glib = dependency('glib-2.0', version: '>= ' + glib_version)
 gmodule = dependency('gmodule-2.0')
-gtk_version = '3.14.0'
-gtk_api_version = '3.0'
-gtk = dependency('gtk+-' + gtk_api_version, version: '>= ' + gtk_version)
-ice = dependency('ice')
-sm = dependency('sm')
-X11 = dependency('x11')
-xapp = dependency('xapp', version: '>= 2.5.0')
+gtk_version = '4.12.0'
+gtk_api_version = '4.0'
+gtk = dependency('gtk4', version: '>= ' + gtk_version)
+gtk_unix_print = dependency('gtk4-unix-print', version: '>= ' + gtk_version)
 xml = dependency('libxml-2.0', version: '>= 2.5.0')
 zlib = dependency('zlib')
 libsecret = dependency('libsecret-1', version: '>= 0.5', required: get_option('keyring'))
-gtk_unix_print = dependency('gtk+-unix-print-3.0', version: '>= ' + gtk_version, required: get_option('gtk_unix_print'))
 
 enabled_backend_names = []
 backend_subdirs = []
@@ -125,7 +121,7 @@ endif
 thumbnailer_mime_types = xreader_mime_types
 
 if get_option('epub')
-    webkit = dependency('webkit2gtk-4.1', version: '>= 2.4.3', required: false)
+    webkit = dependency('webkitgtk-6.0', version: '>= 2.40.0', required: false)
     backend_subdirs += 'epub'
     xreader_mime_types += 'application/epub+zip;'
 endif
@@ -145,9 +141,9 @@ if mathjax_directory == ''
         # Debian
         '/usr/share/javascript/mathjax'
         ]
-        if run_command('test', ['-f', join_paths(dir, 'MathJax.js')]).returncode() == 0
+        if run_command('test', ['-f', join_paths(dir, 'MathJax.js')], check: false).returncode() == 0
             mathjax_directory = dir
-            # break would require meson_version >= 0.49.0 so just let the last one win
+            break
         endif
     endforeach
 endif

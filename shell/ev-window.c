@@ -44,7 +44,7 @@
 
 #include "eggfindbar.h"
 
-#include "ephy-zoom-action.h"
+#include "ev-zoom-action.h"
 #include "ephy-zoom.h"
 
 #include "ev-application.h"
@@ -66,7 +66,7 @@
 #include "ev-jobs.h"
 #include "ev-message-area.h"
 #include "ev-metadata.h"
-#include "ev-open-recent-action.h"
+// #include "ev-open-recent-action.h"
 #include "ev-page-action.h"
 #include "ev-history-action.h"
 #include "ev-password-view.h"
@@ -2549,15 +2549,7 @@ ev_window_cmd_file_activate (GtkAction *action,
             NULL, 0, NULL, gtk_get_current_event_time ());
 }
 
-static void
-ev_window_open_recent_action_item_activated (EvOpenRecentAction *action,
-                                             const gchar        *uri,
-                                             EvWindow           *window)
-{
-    ev_application_open_uri_at_dest (EV_APP, uri,
-            gtk_window_get_screen (GTK_WINDOW (window)),
-            NULL, 0, NULL, gtk_get_current_event_time ());
-}
+/* /* ev_window_open_recent_action_item_activated */
 
 static void
 ev_window_add_recent (EvWindow *window,
@@ -3850,7 +3842,7 @@ ev_window_cmd_focus_page_selector (GtkAction *act,
 
     action = gtk_action_group_get_action (window->priv->action_group,
             PAGE_SELECTOR_ACTION);
-    ev_page_action_grab_focus (EV_PAGE_ACTION (action));
+    // ev_page_action_grab_focus (EV_PAGE_ACTION (action));
 }
 
 static void
@@ -6608,8 +6600,7 @@ register_custom_actions (EvWindow       *window,
             "icon_name", "text-x-generic",
             "visible_overflown", FALSE,
             NULL);
-    ev_page_action_set_model (EV_PAGE_ACTION (action),
-            window->priv->model);
+    // ev_page_action_set_model (EV_PAGE_ACTION (action), model);
     g_signal_connect (action, "activate_link",
             G_CALLBACK (activate_link_cb), window);
     gtk_action_group_add_action (group, action);
@@ -6682,7 +6673,7 @@ sidebar_widget_model_set (EvSidebarLinks *ev_sidebar_links,
             NULL);
 
     action = gtk_action_group_get_action (ev_window->priv->action_group, PAGE_SELECTOR_ACTION);
-    ev_page_action_set_links_model (EV_PAGE_ACTION (action), model);
+    // ev_page_action_set_links_model (EV_PAGE_ACTION (action), model);
     g_object_unref (model);
 }
 

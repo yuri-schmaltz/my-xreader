@@ -124,7 +124,7 @@ typedef struct {
 } AddingAnnotInfo;
 
 struct _EvView {
-	GtkLayout layout;
+	GtkWidget layout;
 
 	/* Container */
 	GList *children;
@@ -227,7 +227,7 @@ struct _EvView {
 	EvMapping *synctex_result;
 
 	/* Accessibility */
-	AtkObject *accessible;
+	GObject *accessible;
 
 	/* Gestures */
 	GtkGesture *pan_gesture;
@@ -241,7 +241,7 @@ struct _EvView {
 };
 
 struct _EvViewClass {
-	GtkLayoutClass parent_class;
+	GtkWidgetClass parent_class;
 
 	void    (*binding_activated)	  (EvView         *view,
 					   GtkScrollType   scroll,

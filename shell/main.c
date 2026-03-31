@@ -33,9 +33,6 @@
 #include "ev-stock-icons.h"
 #include "ev-metadata.h"
 
-#include "eggsmclient.h"
-#include "eggdesktopfile.h"
-
 static gchar   *ev_page_label;
 static gchar   *ev_find_string;
 static gint     ev_page_index = 0;
@@ -158,14 +155,14 @@ get_label_from_filename (const gchar *filename)
 static void
 load_files (const char **files)
 {
-	GdkScreen       *screen = gdk_screen_get_default ();
+	GdkDisplay      *display = gdk_display_get_default ();
 	EvWindowRunMode  mode = EV_WINDOW_MODE_NORMAL;
 	gint             i;
 	EvLinkDest      *global_dest = NULL;
 
 	if (!files) {
 		if (!ev_application_has_window (EV_APP))
-			ev_application_open_window (EV_APP, screen, GDK_CURRENT_TIME);
+			ev_application_open_window (EV_APP, display, GDK_CURRENT_TIME);
 		return;
 	}
 
@@ -209,9 +206,7 @@ load_files (const char **files)
 			continue;
 		}
 
-
-
-		ev_application_open_uri_at_dest (EV_APP, uri, screen, dest,
+		ev_application_open_uri_at_dest (EV_APP, uri, display, dest,
 						 mode, ev_find_string,
 						 GDK_CURRENT_TIME);
 
@@ -234,13 +229,9 @@ main (int argc, char *argv[])
 	bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
 	textdomain (GETTEXT_PACKAGE);
 
-	gdk_set_allowed_backends ("x11");
-
 	context = g_option_context_new (N_("Document Viewer"));
 	g_option_context_set_translation_domain(context, GETTEXT_PACKAGE);
 	g_option_context_add_main_entries (context, goption_options, GETTEXT_PACKAGE);
-	g_option_context_add_group (context, egg_sm_client_get_option_group ());
-	g_option_context_add_group (context, gtk_get_option_group (TRUE));
 
 	if (!g_option_context_parse (context, &argc, &argv, &error)) {
 		g_printerr ("Cannot parse arguments: %s\n", error->message);

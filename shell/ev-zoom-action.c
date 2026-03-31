@@ -82,7 +82,7 @@ ev_zoom_action_set_zoom_level (EvZoomAction *zoom_action,
 
         for (i = 0; i < G_N_ELEMENTS (zoom_levels); i++) {
                 if (ABS (zoom - zoom_levels[i].level) < EPSILON) {
-                        gtk_entry_set_text (GTK_ENTRY (priv->entry),
+                        gtk_editable_set_text (GTK_EDITABLE (priv->entry),
                                             zoom_levels[i].name);
                         return;
                 }
@@ -93,7 +93,7 @@ ev_zoom_action_set_zoom_level (EvZoomAction *zoom_action,
                 zoom_str = g_strdup_printf ("%d%%", (gint)zoom_perc);
         else
                 zoom_str = g_strdup_printf ("%.1f%%", zoom_perc);
-        gtk_entry_set_text (GTK_ENTRY (priv->entry), zoom_str);
+        gtk_editable_set_text (GTK_EDITABLE (priv->entry), zoom_str);
         g_free (zoom_str);
 }
 
@@ -103,15 +103,11 @@ ev_zoom_action_update_zoom_level (EvZoomAction *zoom_action)
     EvZoomActionPrivate *priv = GET_PRIVATE (zoom_action);
 
     float       zoom = ev_document_model_get_scale (priv->model);
-    GdkScreen  *screen = gtk_widget_get_screen (GTK_WIDGET (zoom_action));
-    GdkWindow  *window = gtk_widget_get_parent_window (GTK_WIDGET (zoom_action));
+    GtkNative *native = gtk_widget_get_native (GTK_WIDGET (zoom_action));
+    GtkWindow  *window = native && GTK_IS_WINDOW (native) ? GTK_WINDOW (native) : NULL;
 
     if (window) {
-        GdkDisplay *display = gdk_screen_get_display (screen);
-        GdkMonitor *monitor = gdk_display_get_monitor_at_window (display, window);
-
-        zoom *= 72.0 / ev_document_misc_get_screen_dpi (screen, monitor);
-        zoom *= gdk_monitor_get_scale_factor (monitor);
+        zoom *= 72.0 / ev_document_misc_get_screen_dpi_at_window (window);
     }
 
     ev_zoom_action_set_zoom_level (zoom_action, zoom);
@@ -149,7 +145,7 @@ ev_zoom_action_set_width_chars (EvZoomAction *zoom_action,
 	EvZoomActionPrivate *priv = GET_PRIVATE (zoom_action);
 
         /* width + 2 (one decimals and the comma) + 3 (for the icon) */
-        gtk_entry_set_width_chars (GTK_ENTRY (priv->entry), width + 2 + 3);
+        gtk_editable_set_width_chars (GTK_EDITABLE (priv->entry), width + 2 + 3);
 }
 
 static void
@@ -191,7 +187,10 @@ max_zoom_changed_cb (EvDocumentModel *model,
 	EvZoomActionPrivate *priv = GET_PRIVATE (zoom_action);
 
         g_menu_remove_all (G_MENU (priv->menu));
-        g_clear_pointer (&priv->popup, (GDestroyNotify)gtk_widget_destroy);
+        if (priv->popup) {
+            gtk_widget_unparent (GTK_WIDGET (priv->popup));
+            priv->popup = NULL;
+        }
         ev_zoom_action_populate_free_zoom_section (zoom_action);
 }
 
@@ -201,14 +200,9 @@ entry_activated_cb (GtkEntry     *entry,
 {
 	EvZoomActionPrivate *priv = GET_PRIVATE (zoom_action);
 
-        GdkScreen   *screen;
-        GdkWindow   *window;
-        GdkDisplay *display;
-        GdkMonitor *monitor;
-        
         double       zoom_perc;
         float        zoom;
-        const gchar *text = gtk_entry_get_text (entry);
+        const gchar *text = gtk_editable_get_text (GTK_EDITABLE(entry));
         gchar       *end_ptr = NULL;
 
         if (!text || text[0] == '\0') {
@@ -224,15 +218,12 @@ entry_activated_cb (GtkEntry     *entry,
                 return;
         }
 
-        screen = gtk_widget_get_screen (GTK_WIDGET (zoom_action));
-        window = gtk_widget_get_parent_window (GTK_WIDGET (zoom_action));
-        display = gdk_screen_get_display (screen);
-        monitor = gdk_display_get_monitor_at_window (display, window);
+        GtkNative *native = gtk_widget_get_native (GTK_WIDGET (zoom_action));
+        GtkWindow  *window = native && GTK_IS_WINDOW (native) ? GTK_WINDOW (native) : NULL;
         zoom = zoom_perc / 100.;
         ev_document_model_set_sizing_mode (priv->model, EV_SIZING_FREE);
         ev_document_model_set_scale (priv->model,
-                                     zoom * ev_document_misc_get_screen_dpi (screen, monitor)
-                                     / gdk_monitor_get_scale_factor (monitor) / 72.0);
+                                     window ? zoom * ev_document_misc_get_screen_dpi_at_window (window) / 72.0 : zoom);
         g_signal_emit (zoom_action, signals[ACTIVATED], 0, NULL);
 }
 
@@ -266,8 +257,7 @@ get_popup (EvZoomAction *zoom_action)
         if (priv->popup)
                 return priv->popup;
 
-        priv->popup = GTK_POPOVER (gtk_popover_new_from_model (GTK_WIDGET (zoom_action),
-                                                                            G_MENU_MODEL (priv->menu)));
+        priv->popup = GTK_POPOVER (gtk_popover_menu_new_from_model (G_MENU_MODEL (priv->menu)));
         g_signal_connect (priv->popup, "closed",
                           G_CALLBACK (popup_menu_closed),
                           zoom_action);
@@ -282,15 +272,9 @@ get_popup (EvZoomAction *zoom_action)
 static void
 entry_icon_press_callback (GtkEntry            *entry,
                            GtkEntryIconPosition icon_pos,
-                           GdkEvent            *event,
                            EvZoomAction        *zoom_action)
 {
 	EvZoomActionPrivate *priv = GET_PRIVATE (zoom_action);
-        guint button = 0;
-
-        if (gdk_event_get_button (event, &button) &&
-            button != GDK_BUTTON_PRIMARY)
-                return;
 
         gtk_popover_popup (get_popup (zoom_action));
         priv->popup_shown = TRUE;
@@ -343,17 +327,6 @@ setup_initial_entry_size (EvZoomAction *zoom_action)
 }
 
 static void
-ev_zoom_action_get_preferred_width (GtkWidget *widget,
-                                    gint      *minimum_width,
-                                    gint      *natural_width)
-{
-        *minimum_width = *natural_width = 0;
-
-        GTK_WIDGET_CLASS (ev_zoom_action_parent_class)->get_preferred_width (widget, minimum_width, natural_width);
-        *natural_width = *minimum_width;
-}
-
-static void
 ev_zoom_action_constructed (GObject *object)
 {
         EvZoomAction *zoom_action = EV_ZOOM_ACTION (object);
@@ -389,13 +362,13 @@ static void
 ev_zoom_action_class_init (EvZoomActionClass *klass)
 {
         GObjectClass *object_class = G_OBJECT_CLASS (klass);
-        GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
+        // GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
 
         object_class->finalize = ev_zoom_action_finalize;
         object_class->constructed = ev_zoom_action_constructed;
         object_class->set_property = ev_zoom_action_set_property;
 
-        widget_class->get_preferred_width = ev_zoom_action_get_preferred_width;
+        
 
         g_object_class_install_property (object_class,
                                          PROP_DOCUMENT_MODEL,
@@ -437,7 +410,8 @@ ev_zoom_action_init (EvZoomAction *zoom_action)
         gtk_entry_set_icon_from_icon_name (GTK_ENTRY (priv->entry),
                                            GTK_ENTRY_ICON_SECONDARY,
                                            "xsi-pan-down-symbolic");
-        gtk_box_pack_start (GTK_BOX (zoom_action), priv->entry, TRUE, FALSE, 0);
+        gtk_widget_set_hexpand(priv->entry, TRUE);
+        gtk_box_append (GTK_BOX (zoom_action), priv->entry);
         g_object_set (priv->entry, "xalign", 1.0, NULL);
         gtk_widget_show (priv->entry);
 

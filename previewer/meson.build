@@ -16,7 +16,6 @@ previewer_deps = [
     libdocument_dep,
     gio,
     gtk,
-    gtk_unix_print
 ]
 
 executable(

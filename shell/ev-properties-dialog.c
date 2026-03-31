@@ -62,23 +62,23 @@ ev_properties_dialog_init (EvPropertiesDialog *properties)
 
 	gtk_window_set_title (GTK_WINDOW (properties), _("Properties"));
 	gtk_window_set_destroy_with_parent (GTK_WINDOW (properties), TRUE);
-	gtk_container_set_border_width (GTK_CONTAINER (properties), 5);
+	gtk_widget_set_margin_start(GTK_WIDGET(properties), 5); gtk_widget_set_margin_end(GTK_WIDGET(properties), 5); gtk_widget_set_margin_top(GTK_WIDGET(properties), 5); gtk_widget_set_margin_bottom(GTK_WIDGET(properties), 5);
 	gtk_box_set_spacing (content_area, 2);
 
-	button = gtk_dialog_add_button (GTK_DIALOG (properties), GTK_STOCK_CLOSE,
+	button = gtk_dialog_add_button (GTK_DIALOG (properties), _("_Close"),
 			       GTK_RESPONSE_CANCEL);
 	gtk_style_context_add_class (gtk_widget_get_style_context (button),
-				     GTK_STYLE_CLASS_DESTRUCTIVE_ACTION);
+				     "destructive-action");
 	gtk_dialog_set_default_response (GTK_DIALOG (properties),
 			                 GTK_RESPONSE_CANCEL);
 
 	properties->notebook = gtk_notebook_new ();
-	gtk_container_set_border_width (GTK_CONTAINER (properties->notebook), 5);
-	gtk_box_pack_start (content_area, properties->notebook, TRUE, TRUE, 0);
+	gtk_widget_set_margin_start(properties->notebook, 5); gtk_widget_set_margin_end(properties->notebook, 5); gtk_widget_set_margin_top(properties->notebook, 5); gtk_widget_set_margin_bottom(properties->notebook, 5);
+	gtk_box_append (GTK_BOX (content_area), properties->notebook); gtk_widget_set_vexpand(properties->notebook, TRUE); gtk_widget_set_hexpand(properties->notebook, TRUE);
 	gtk_widget_show (properties->notebook);
 
 	g_signal_connect (properties, "response",
-			  G_CALLBACK (gtk_widget_destroy), NULL);
+			  G_CALLBACK (gtk_window_destroy), NULL);
 }
 
 void

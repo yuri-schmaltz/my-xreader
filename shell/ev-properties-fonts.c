@@ -110,12 +110,14 @@ ev_properties_fonts_init (EvPropertiesFonts *properties)
 	GtkTreeViewColumn *column;
 
 	gtk_orientable_set_orientation (GTK_ORIENTABLE (properties), GTK_ORIENTATION_VERTICAL);
-	gtk_container_set_border_width (GTK_CONTAINER (properties), 12);
+	gtk_widget_set_margin_start (GTK_WIDGET (properties), 12);
+	gtk_widget_set_margin_end (GTK_WIDGET (properties), 12);
+	gtk_widget_set_margin_top (GTK_WIDGET (properties), 12);
+	gtk_widget_set_margin_bottom (GTK_WIDGET (properties), 12);
 	gtk_box_set_spacing (GTK_BOX (properties), 6);
 	
-	swindow = gtk_scrolled_window_new (NULL, NULL);
-	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (swindow),
-					     GTK_SHADOW_IN);
+	swindow = gtk_scrolled_window_new ();
+	gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (swindow), TRUE);
 	
 	properties->fonts_treeview = gtk_tree_view_new ();
 	gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (properties->fonts_treeview),
@@ -135,20 +137,19 @@ ev_properties_fonts_init (EvPropertiesFonts *properties)
 						 font_cell_data_func,
 						 NULL, NULL);
 
-	gtk_container_add (GTK_CONTAINER (swindow), properties->fonts_treeview);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (swindow), properties->fonts_treeview);
 	gtk_widget_show (properties->fonts_treeview);
 
-	gtk_box_pack_start (GTK_BOX (properties), swindow, 
-			    TRUE, TRUE, 0);
+	gtk_widget_set_vexpand (swindow, TRUE);
+	gtk_widget_set_hexpand (swindow, TRUE);
+	gtk_box_append (GTK_BOX (properties), swindow);
 	gtk_widget_show (swindow);
 
 	properties->fonts_progress_label = gtk_label_new (NULL);
 	g_object_set (G_OBJECT (properties->fonts_progress_label),
 		      "xalign", 0.0,
 		      NULL);
-	gtk_box_pack_start (GTK_BOX (properties),
-			    properties->fonts_progress_label,
-			    FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (properties), properties->fonts_progress_label);
 	gtk_widget_show (properties->fonts_progress_label);
 }
 

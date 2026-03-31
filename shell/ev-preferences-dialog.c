@@ -88,7 +88,7 @@ close_button_clicked(GtkButton *button,
 {
     EvPreferencesDialog *dlg = EV_PREFERENCES_DIALOG(data);
 
-    gtk_widget_destroy(GTK_WIDGET(dlg));
+    gtk_window_destroy(GTK_WINDOW(dlg));
 }
 
 static void
@@ -156,7 +156,12 @@ ev_preferences_dialog_init(EvPreferencesDialog *dlg)
 
     setup_buttons(dlg);
     setup_editor_page(dlg);
-    gtk_widget_show_all(GTK_WIDGET(dlg));
+}
+
+static void
+on_preferences_dialog_destroyed (gpointer data, GObject *where_the_object_was)
+{
+	preferences_dialog = NULL;
 }
 
 GtkWidget *
@@ -176,7 +181,7 @@ ev_preferences_dialog_show(EvWindow *parent)
 
     if (preferences_dialog == NULL) {
         preferences_dialog = ev_preferences_dialog_new(parent);
-        g_signal_connect(preferences_dialog, "destroy", G_CALLBACK(gtk_widget_destroyed), &preferences_dialog);
+        g_object_weak_ref (G_OBJECT (preferences_dialog), on_preferences_dialog_destroyed, NULL);
     }
 
     if (GTK_WINDOW(parent) != gtk_window_get_transient_for(GTK_WINDOW(preferences_dialog))) {
@@ -185,4 +190,3 @@ ev_preferences_dialog_show(EvWindow *parent)
 
     gtk_window_present(GTK_WINDOW(preferences_dialog));
 }
-

@@ -51,6 +51,7 @@ struct _EvSidebarPrivate {
 	GtkWidget *notebook;
 	GtkWidget *select_button;
 	GtkWidget *menu;
+	GtkWidget *menu_box;
 	GtkWidget *hbox;
 	GtkWidget *label;
 
@@ -66,7 +67,7 @@ ev_sidebar_dispose (GObject *object)
 	EvSidebar *ev_sidebar = EV_SIDEBAR (object);
 
 	if (ev_sidebar->priv->menu) {
-		gtk_menu_detach (GTK_MENU (ev_sidebar->priv->menu));
+		/* popover is child of menu_button */
 		ev_sidebar->priv->menu = NULL;
 	}
 
@@ -188,83 +189,8 @@ ev_sidebar_class_init (EvSidebarClass *ev_sidebar_class)
 							      G_PARAM_READWRITE));
 }
 
-static void
-ev_sidebar_menu_position_under (GtkMenu  *menu,
-				int      *x,
-				int      *y,
-				gboolean *push_in,
-				gpointer  user_data)
-{
-	GtkWidget    *widget;
-	GtkAllocation allocation;
 
-	g_return_if_fail (GTK_IS_BUTTON (user_data));
-	g_return_if_fail (!gtk_widget_get_has_window (GTK_WIDGET (user_data)));
 
-	widget = GTK_WIDGET (user_data);
-
-	gdk_window_get_origin (gtk_widget_get_window (widget), x, y);
-	gtk_widget_get_allocation (widget, &allocation);
-
-	*x += allocation.x;
-	*y += allocation.y + allocation.height;
-
-	*push_in = FALSE;
-}
-
-static gboolean
-ev_sidebar_select_button_press_cb (GtkWidget      *widget,
-				   GdkEventButton *event,
-				   gpointer        user_data)
-{
-	EvSidebar *ev_sidebar = EV_SIDEBAR (user_data);
-
-	if (event->button == 1) {
-		GtkRequisition requisition;
-		GtkAllocation allocation;
-		gint width;
-
-		gtk_widget_get_allocation (widget, &allocation);
-		width = allocation.width;
-		gtk_widget_set_size_request (ev_sidebar->priv->menu, -1, -1);
-		gtk_widget_get_preferred_size (ev_sidebar->priv->menu, &requisition, NULL);
-
-		gtk_widget_set_size_request (ev_sidebar->priv->menu,
-					     MAX (width, requisition.width), -1);
-
-		gtk_widget_grab_focus (widget);
-
-		gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (widget), TRUE);
-		gtk_menu_popup (GTK_MENU (ev_sidebar->priv->menu),
-				NULL, NULL, ev_sidebar_menu_position_under, widget,
-				event->button, event->time);
-
-		return TRUE;
-	}
-
-	return FALSE;
-}
-
-static gboolean
-ev_sidebar_select_button_key_press_cb (GtkWidget   *widget,
-				       GdkEventKey *event,
-				       gpointer     user_data)
-{
-	EvSidebar *ev_sidebar = EV_SIDEBAR (user_data);
-
-	if (event->keyval == GDK_KEY_space ||
-	    event->keyval == GDK_KEY_KP_Space ||
-	    event->keyval == GDK_KEY_Return ||
-	    event->keyval == GDK_KEY_KP_Enter) {
-		gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (widget), TRUE);
-		gtk_menu_popup (GTK_MENU (ev_sidebar->priv->menu),
-			        NULL, NULL, ev_sidebar_menu_position_under, widget,
-				1, event->time);
-		return TRUE;
-	}
-
-	return FALSE;
-}
 
 static void
 ev_sidebar_close_clicked_cb (GtkWidget *widget,
@@ -275,25 +201,7 @@ ev_sidebar_close_clicked_cb (GtkWidget *widget,
 	gtk_widget_hide (GTK_WIDGET (ev_sidebar));
 }
 
-static void
-ev_sidebar_menu_deactivate_cb (GtkWidget *widget,
-                               gpointer   user_data)
-{
-	GtkWidget *menu_button;
 
-	menu_button = GTK_WIDGET (user_data);
-
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (menu_button), FALSE);
-}
-
-static void
-ev_sidebar_menu_detach_cb (GtkWidget *widget,
-			   GtkMenu   *menu)
-{
-	EvSidebar *ev_sidebar = EV_SIDEBAR (widget);
-
-	ev_sidebar->priv->menu = NULL;
-}
 
 static void
 ev_sidebar_menu_item_activate_cb (GtkWidget *widget,
@@ -304,7 +212,8 @@ ev_sidebar_menu_item_activate_cb (GtkWidget *widget,
 	GtkWidget *menu_item, *item;
 	gboolean valid;
 
-	menu_item = gtk_menu_get_active (GTK_MENU (ev_sidebar->priv->menu));
+	menu_item = widget; /* the button clicked */
+	gtk_popover_popdown(GTK_POPOVER(ev_sidebar->priv->menu));
 	valid = gtk_tree_model_get_iter_first (ev_sidebar->priv->page_model, &iter);
 
 	while (valid) {
@@ -347,59 +256,46 @@ ev_sidebar_init (EvSidebar *ev_sidebar)
 	/* top option menu */
 	hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 	ev_sidebar->priv->hbox = hbox;
-	gtk_container_set_border_width (GTK_CONTAINER (hbox), 3);
-	gtk_box_pack_start (GTK_BOX (ev_sidebar), hbox, FALSE, FALSE, 0);
+	
+	gtk_box_append (GTK_BOX (ev_sidebar), hbox);
 	gtk_widget_show (hbox);
 
-	ev_sidebar->priv->select_button = gtk_toggle_button_new ();
-	g_signal_connect (ev_sidebar->priv->select_button, "button_press_event",
-			  G_CALLBACK (ev_sidebar_select_button_press_cb),
-			  ev_sidebar);
-	g_signal_connect (ev_sidebar->priv->select_button, "key_press_event",
-			  G_CALLBACK (ev_sidebar_select_button_key_press_cb),
-			  ev_sidebar);
+	ev_sidebar->priv->select_button = gtk_menu_button_new ();
 
 	select_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
 	ev_sidebar->priv->label = gtk_label_new ("");
-	gtk_box_pack_start (GTK_BOX (select_hbox),
-			    ev_sidebar->priv->label,
-			    TRUE, TRUE, 12);
+	gtk_box_append(GTK_BOX(select_hbox), ev_sidebar->priv->label);
 	gtk_widget_show (ev_sidebar->priv->label);
 
-	arrow = gtk_image_new_from_icon_name ("xsi-pan-down-symbolic", GTK_ICON_SIZE_BUTTON);
-	gtk_box_pack_end (GTK_BOX (select_hbox), arrow, FALSE, TRUE, 0);
+	arrow = gtk_image_new_from_icon_name ("xsi-pan-down-symbolic");
+	gtk_box_append (GTK_BOX (select_hbox), arrow);
 	gtk_widget_show (arrow);
 
-	gtk_container_add (GTK_CONTAINER (ev_sidebar->priv->select_button), select_hbox);
+	gtk_menu_button_set_child (GTK_MENU_BUTTON (ev_sidebar->priv->select_button), select_hbox);
 	gtk_widget_show (select_hbox);
 
-	gtk_box_pack_start (GTK_BOX (hbox), ev_sidebar->priv->select_button, TRUE, TRUE, 0);
+	gtk_box_append (GTK_BOX (hbox), ev_sidebar->priv->select_button);
 	gtk_widget_set_halign (ev_sidebar->priv->select_button, GTK_ALIGN_CENTER);
 	gtk_widget_show (ev_sidebar->priv->select_button);
 
-	close_button = gtk_button_new_from_icon_name ("xsi-window-close-symbolic", GTK_ICON_SIZE_BUTTON);
-	gtk_button_set_relief (GTK_BUTTON (close_button), GTK_RELIEF_NONE);
+	close_button = gtk_button_new_from_icon_name ("xsi-window-close-symbolic");
+	gtk_button_set_has_frame (GTK_BUTTON(close_button), FALSE);
 	g_signal_connect (close_button, "clicked",
 		               G_CALLBACK (ev_sidebar_close_clicked_cb),
 		               ev_sidebar);
-	gtk_box_pack_end (GTK_BOX (hbox), close_button, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (hbox), close_button);
 	gtk_widget_show (close_button);
 
-	ev_sidebar->priv->menu = gtk_menu_new ();
-	g_signal_connect (ev_sidebar->priv->menu, "deactivate",
-			  G_CALLBACK (ev_sidebar_menu_deactivate_cb),
-			  ev_sidebar->priv->select_button);
-	gtk_menu_attach_to_widget (GTK_MENU (ev_sidebar->priv->menu),
-				   GTK_WIDGET (ev_sidebar),
-				   ev_sidebar_menu_detach_cb);
-	gtk_widget_show (ev_sidebar->priv->menu);
+	ev_sidebar->priv->menu = gtk_popover_new ();
+        ev_sidebar->priv->menu_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        gtk_popover_set_child(GTK_POPOVER(ev_sidebar->priv->menu), ev_sidebar->priv->menu_box);
+        gtk_menu_button_set_popover(GTK_MENU_BUTTON(ev_sidebar->priv->select_button), ev_sidebar->priv->menu);
 
 	ev_sidebar->priv->notebook = gtk_notebook_new ();
 	gtk_notebook_set_show_border (GTK_NOTEBOOK (ev_sidebar->priv->notebook), FALSE);
 	gtk_notebook_set_show_tabs (GTK_NOTEBOOK (ev_sidebar->priv->notebook), FALSE);
-	gtk_box_pack_start (GTK_BOX (ev_sidebar), ev_sidebar->priv->notebook,
-			    TRUE, TRUE, 0);
+	gtk_widget_set_vexpand(ev_sidebar->priv->notebook, TRUE); gtk_box_append(GTK_BOX(ev_sidebar), ev_sidebar->priv->notebook);
 	gtk_widget_show (ev_sidebar->priv->notebook);
 
 	gtk_widget_set_sensitive (GTK_WIDGET (ev_sidebar->priv->notebook), FALSE);
@@ -439,13 +335,12 @@ ev_sidebar_add_page (EvSidebar   *ev_sidebar,
 	index = gtk_notebook_append_page (GTK_NOTEBOOK (ev_sidebar->priv->notebook),
 					  main_widget, NULL);
 
-	menu_item = gtk_image_menu_item_new_with_label (title);
+	menu_item = gtk_button_new_with_label (title); gtk_button_set_has_frame(GTK_BUTTON(menu_item), FALSE);
 	g_signal_connect (menu_item, "activate",
 			  G_CALLBACK (ev_sidebar_menu_item_activate_cb),
 			  ev_sidebar);
 	gtk_widget_show (menu_item);
-	gtk_menu_shell_append (GTK_MENU_SHELL (ev_sidebar->priv->menu),
-			       menu_item);
+	gtk_box_append (GTK_BOX(ev_sidebar->priv->menu_box), menu_item);
 
 	/* Insert and move to end */
 	gtk_list_store_insert_with_values (GTK_LIST_STORE (ev_sidebar->priv->page_model),
@@ -467,7 +362,7 @@ ev_sidebar_add_page (EvSidebar   *ev_sidebar,
 			    PAGE_COLUMN_NOTEBOOK_INDEX, &index,
 			    -1);
 
-	gtk_menu_set_active (GTK_MENU (ev_sidebar->priv->menu), index);
+	/* active menu handled via list store */
 	gtk_label_set_text (GTK_LABEL (ev_sidebar->priv->label), label_title);
 	gtk_notebook_set_current_page (GTK_NOTEBOOK (ev_sidebar->priv->notebook),
 				       index);

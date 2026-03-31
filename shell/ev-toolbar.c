@@ -5,20 +5,16 @@
 #include "config.h"
 
 #include <glib/gi18n.h>
+#include <gtk/gtk.h>
 
 #include "ev-toolbar.h"
 #include "ev-document-model.h"
 #include "ev-zoom-action.h"
+#include "ev-page-action-widget.h"
 
-enum
+struct _EvToolbar
 {
-    PROP_0,
-    PROP_WINDOW
-};
-
-struct _EvToolbarPrivate
-{
-    GtkStyleContext *style_context;
+    GtkBox parent_instance;
 
     GtkWidget *fullscreen_group;
     GtkWidget *preset_group;
@@ -34,7 +30,13 @@ struct _EvToolbarPrivate
     EvDocumentModel *model;
 };
 
-G_DEFINE_TYPE_WITH_PRIVATE (EvToolbar, ev_toolbar, GTK_TYPE_TOOLBAR)
+enum
+{
+    PROP_0,
+    PROP_WINDOW
+};
+
+G_DEFINE_TYPE (EvToolbar, ev_toolbar, GTK_TYPE_BOX)
 
 static void
 ev_toolbar_set_property (GObject      *object,
@@ -47,7 +49,7 @@ ev_toolbar_set_property (GObject      *object,
     switch (prop_id)
     {
         case PROP_WINDOW:
-            ev_toolbar->priv->window = g_value_get_object (value);
+            ev_toolbar->window = g_value_get_object (value);
             break;
         default:
             G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -82,9 +84,9 @@ ev_toolbar_document_model_changed_cb (EvDocumentModel *model,
             break;
     }
 
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->priv->page_preset_button),
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->page_preset_button),
                                   !continuous && best_fit);
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->priv->reader_preset_button),
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->reader_preset_button),
                                   continuous && page_width);
 }
 
@@ -96,8 +98,8 @@ on_page_preset_toggled (GtkToggleButton *button,
 
     if (gtk_toggle_button_get_active (button))
     {
-        ev_document_model_set_continuous (ev_toolbar->priv->model, FALSE);
-        ev_document_model_set_sizing_mode (ev_toolbar->priv->model, EV_SIZING_BEST_FIT);
+        ev_document_model_set_continuous (ev_toolbar->model, FALSE);
+        ev_document_model_set_sizing_mode (ev_toolbar->model, EV_SIZING_BEST_FIT);
     }
 }
 
@@ -109,8 +111,8 @@ on_reader_preset_toggled (GtkToggleButton *button,
 
     if (gtk_toggle_button_get_active (button))
     {
-        ev_document_model_set_continuous (ev_toolbar->priv->model, TRUE);
-        ev_document_model_set_sizing_mode (ev_toolbar->priv->model, EV_SIZING_FIT_WIDTH);
+        ev_document_model_set_continuous (ev_toolbar->model, TRUE);
+        ev_document_model_set_sizing_mode (ev_toolbar->model, EV_SIZING_FIT_WIDTH);
     }
 }
 
@@ -123,87 +125,74 @@ setup_preset_buttons (EvToolbar *ev_toolbar)
     box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 
     /* Page preset button */
-    ev_toolbar->priv->page_preset_button = gtk_toggle_button_new ();
-    gtk_widget_set_valign (ev_toolbar->priv->page_preset_button, GTK_ALIGN_CENTER);
-    image = gtk_image_new_from_icon_name ("xsi-view-paged-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_style_context_add_class (gtk_widget_get_style_context (ev_toolbar->priv->page_preset_button), "flat");
-    gtk_button_set_focus_on_click (GTK_BUTTON (ev_toolbar->priv->page_preset_button), FALSE);
+    ev_toolbar->page_preset_button = gtk_toggle_button_new ();
+    gtk_widget_set_valign (ev_toolbar->page_preset_button, GTK_ALIGN_CENTER);
+    image = gtk_image_new_from_icon_name ("xsi-view-paged-symbolic");
+    gtk_widget_add_css_class (ev_toolbar->page_preset_button, "flat");
+    gtk_widget_set_focusable (GTK_WIDGET (ev_toolbar->page_preset_button), FALSE);
 
-    gtk_button_set_image (GTK_BUTTON (ev_toolbar->priv->page_preset_button), image);
-    gtk_widget_set_tooltip_text (ev_toolbar->priv->page_preset_button,
+    gtk_button_set_child (GTK_BUTTON (ev_toolbar->page_preset_button), image);
+    gtk_widget_set_tooltip_text (ev_toolbar->page_preset_button,
                                  _("Page View\nNon-Continuous + Best Fit\nCtrl+2"));
-    gtk_box_pack_end (GTK_BOX (box), ev_toolbar->priv->page_preset_button, FALSE, FALSE, 0);
-    g_signal_connect (ev_toolbar->priv->page_preset_button, "toggled",
+    gtk_box_append (GTK_BOX (box), ev_toolbar->page_preset_button);
+    g_signal_connect (ev_toolbar->page_preset_button, "toggled",
                       G_CALLBACK (on_page_preset_toggled), ev_toolbar);
 
     /* Reader preset button */
-    ev_toolbar->priv->reader_preset_button = gtk_toggle_button_new ();
-    gtk_widget_set_valign (ev_toolbar->priv->reader_preset_button, GTK_ALIGN_CENTER);
-    image = gtk_image_new_from_icon_name ("xsi-view-continuous-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_style_context_add_class (gtk_widget_get_style_context (ev_toolbar->priv->reader_preset_button), "flat");
-    gtk_button_set_focus_on_click (GTK_BUTTON (ev_toolbar->priv->reader_preset_button), FALSE);
+    ev_toolbar->reader_preset_button = gtk_toggle_button_new ();
+    gtk_widget_set_valign (ev_toolbar->reader_preset_button, GTK_ALIGN_CENTER);
+    image = gtk_image_new_from_icon_name ("xsi-view-continuous-symbolic");
+    gtk_widget_add_css_class (ev_toolbar->reader_preset_button, "flat");
+    gtk_widget_set_focusable (GTK_WIDGET (ev_toolbar->reader_preset_button), FALSE);
 
-    gtk_button_set_image (GTK_BUTTON (ev_toolbar->priv->reader_preset_button), image);
-    gtk_widget_set_tooltip_text (ev_toolbar->priv->reader_preset_button,
+    gtk_button_set_child (GTK_BUTTON (ev_toolbar->reader_preset_button), image);
+    gtk_widget_set_tooltip_text (ev_toolbar->reader_preset_button,
                                  _("Reader View\nContinuous + Fit Page Width\nCtrl+1"));
-    gtk_box_pack_end (GTK_BOX (box), ev_toolbar->priv->reader_preset_button, FALSE, FALSE, 0);
-    g_signal_connect (ev_toolbar->priv->reader_preset_button, "toggled",
+    gtk_box_append (GTK_BOX (box), ev_toolbar->reader_preset_button);
+    g_signal_connect (ev_toolbar->reader_preset_button, "toggled",
                       G_CALLBACK (on_reader_preset_toggled), ev_toolbar);
 
     return box;
 }
 
 static GtkWidget *
-create_sidepane_button (GtkAction *action)
+create_sidepane_button (const gchar *action_name, const gchar *tooltip)
 {
-    GtkWidget *button;
-    GtkWidget *image;
-
-    button = gtk_toggle_button_new();
+    GtkWidget *button = gtk_toggle_button_new();
     gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
-    image = gtk_image_new_from_icon_name ("xsi-view-left-pane-symbolic", GTK_ICON_SIZE_MENU);
-    gtk_image_set_pixel_size (GTK_IMAGE (image), 16);
+    GtkWidget *image = gtk_image_new_from_icon_name ("xsi-view-left-pane-symbolic");
 
-    gtk_button_set_image (GTK_BUTTON (button), image);
-    gtk_style_context_add_class (gtk_widget_get_style_context (button), "flat");
-    gtk_activatable_set_related_action (GTK_ACTIVATABLE (button), action);
-    gtk_button_set_label (GTK_BUTTON (button), NULL);
-    gtk_widget_set_tooltip_text (button, gtk_action_get_tooltip (action));
-    gtk_button_set_focus_on_click (GTK_BUTTON (button), FALSE);
+    gtk_button_set_child (GTK_BUTTON (button), image);
+    gtk_widget_add_css_class (button, "flat");
+    gtk_button_set_has_frame(GTK_BUTTON(button), FALSE);
+    if (action_name) gtk_actionable_set_action_name (GTK_ACTIONABLE (button), action_name);
+    gtk_widget_set_tooltip_text (button, tooltip);
 
     return button;
 }
 
 static GtkWidget *
-create_button (GtkAction *action)
+create_button (const gchar *action_name, const gchar *icon_name, const gchar *tooltip)
 {
-    GtkWidget *button;
-    GtkWidget *image;
-
-    button = gtk_button_new ();
+    GtkWidget *button = gtk_button_new_from_icon_name (icon_name);
     gtk_widget_set_valign (button, GTK_ALIGN_CENTER);
-    image = gtk_image_new ();
-
-    gtk_button_set_image (GTK_BUTTON (button), image);
-    gtk_style_context_add_class (gtk_widget_get_style_context (button), "flat");
-    gtk_activatable_set_related_action (GTK_ACTIVATABLE (button), action);
-    gtk_button_set_label (GTK_BUTTON (button), NULL);
-    gtk_widget_set_tooltip_text (button, gtk_action_get_tooltip (action));
-    gtk_button_set_focus_on_click (GTK_BUTTON (button), FALSE);
-
+    gtk_widget_add_css_class (button, "flat");
+    gtk_button_set_has_frame(GTK_BUTTON(button), FALSE);
+    if (action_name) gtk_actionable_set_action_name (GTK_ACTIONABLE (button), action_name);
+    gtk_widget_set_tooltip_text (button, tooltip);
     return button;
 }
 
 gboolean
 ev_toolbar_zoom_action_get_focused (EvToolbar *ev_toolbar)
 {
-    return ev_zoom_action_get_focused (EV_ZOOM_ACTION (ev_toolbar->priv->zoom_action));
+    return ev_zoom_action_get_focused (EV_ZOOM_ACTION (ev_toolbar->zoom_action));
 }
 
 void
 ev_toolbar_zoom_action_select_all (EvToolbar *ev_toolbar)
 {
-    ev_zoom_action_select_all (EV_ZOOM_ACTION (ev_toolbar->priv->zoom_action));
+    ev_zoom_action_select_all (EV_ZOOM_ACTION (ev_toolbar->zoom_action));
 }
 
 static void
@@ -211,171 +200,143 @@ ev_toolbar_constructed (GObject *object)
 {
     EvToolbar *ev_toolbar = EV_TOOLBAR (object);
     GMenu *zoom_menu;
-    GtkActionGroup *action_group;
-    GtkAction *action;
-    GtkToolItem *tool_item;
     GtkWidget *box;
     GtkWidget *button;
     GtkWidget *separator;
+    GtkWidget *page_selector;
 
     G_OBJECT_CLASS (ev_toolbar_parent_class)->constructed (object);
 
-    ev_toolbar->priv->model = ev_window_get_document_model (ev_toolbar->priv->window);
+    ev_toolbar->model = ev_window_get_document_model (ev_toolbar->window);
 
-    ev_toolbar->priv->style_context = gtk_widget_get_style_context (GTK_WIDGET (ev_toolbar));
-    gtk_style_context_add_class (ev_toolbar->priv->style_context, "primary-toolbar");
+    gtk_widget_add_css_class (GTK_WIDGET (ev_toolbar), "primary-toolbar");
 
-    action_group = ev_window_get_main_action_group (ev_toolbar->priv->window);
-
-    /* Go Previous/Next page */
-    tool_item = gtk_tool_item_new ();
-    gtk_container_add (GTK_CONTAINER (ev_toolbar), GTK_WIDGET (tool_item));
-    gtk_widget_show (GTK_WIDGET (tool_item));
+    /* Using a single horizontal box for the toolbar contents */
+    gtk_orientable_set_orientation (GTK_ORIENTABLE (ev_toolbar), GTK_ORIENTATION_HORIZONTAL);
 
     box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_container_add (GTK_CONTAINER (tool_item), box);
-    gtk_widget_show (GTK_WIDGET (box));
+    gtk_box_append (GTK_BOX (ev_toolbar), box);
 
-    action = gtk_action_group_get_action (action_group, "GoPreviousPage");
-    button = create_button (action);
-    gtk_box_pack_start (GTK_BOX (box), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
+    button = create_button ("win.go-previous-page", "go-previous-symbolic", _("Previous page"));
+    gtk_box_append (GTK_BOX (box), button);
 
-    action = gtk_action_group_get_action (action_group, "GoNextPage");
-    button = create_button (action);
-    gtk_box_pack_start (GTK_BOX (box), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
+    button = create_button ("win.go-next-page", "go-next-symbolic", _("Next page"));
+    gtk_box_append (GTK_BOX (box), button);
 
-    action = gtk_action_group_get_action (action_group, "PageSelector");
-    tool_item = GTK_TOOL_ITEM (gtk_action_create_tool_item (action));
-    gtk_container_add (GTK_CONTAINER (ev_toolbar), GTK_WIDGET (tool_item));
-    gtk_widget_show (GTK_WIDGET (tool_item));
+    /* Page Selector */
+    page_selector = ev_page_action_widget_new ();
+    ev_page_action_widget_set_model (EV_PAGE_ACTION_WIDGET(page_selector), ev_toolbar->model);
+    gtk_box_append (GTK_BOX (ev_toolbar), page_selector);
 
     /* History Navigation */
-    tool_item = gtk_tool_item_new ();
-    gtk_container_add (GTK_CONTAINER (ev_toolbar), GTK_WIDGET (tool_item));
-    gtk_widget_show (GTK_WIDGET (tool_item));
+    ev_toolbar->history_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_box_append (GTK_BOX (ev_toolbar), ev_toolbar->history_group);
 
-    ev_toolbar->priv->history_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_container_add (GTK_CONTAINER (tool_item), ev_toolbar->priv->history_group);
-    gtk_widget_show (GTK_WIDGET (ev_toolbar->priv->history_group));
+    button = create_button ("win.go-back-history", "go-previous-symbolic", _("Go back in history"));
+    gtk_box_append (GTK_BOX (ev_toolbar->history_group), button);
 
-    action = gtk_action_group_get_action (action_group, "GoPreviousHistory");
-    button = create_button (action);
-    gtk_box_pack_start (GTK_BOX (ev_toolbar->priv->history_group), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
+    button = create_button ("win.go-forward-history", "go-next-symbolic", _("Go forward in history"));
+    gtk_box_append (GTK_BOX (ev_toolbar->history_group), button);
 
-    action = gtk_action_group_get_action (action_group, "GoNextHistory");
-    button = create_button (action);
-    gtk_box_pack_start (GTK_BOX (ev_toolbar->priv->history_group), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
-
-    /* Zoom */
-    tool_item = gtk_tool_item_new ();
-    gtk_tool_item_set_expand (tool_item, TRUE);
-    gtk_container_add (GTK_CONTAINER (ev_toolbar), GTK_WIDGET (tool_item));
-    gtk_widget_show (GTK_WIDGET (tool_item));
-
+    /* Zoom box (expanding) */
     box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_container_add (GTK_CONTAINER (tool_item), box);
-    gtk_widget_show (GTK_WIDGET (box));
+    gtk_widget_set_hexpand (box, TRUE);
+    gtk_box_append (GTK_BOX (ev_toolbar), box);
+
+    button = create_sidepane_button ("win.toggle-sidebar", _("Side pane"));
+    gtk_widget_set_halign(button, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), button);
+
+    button = create_button ("win.print", "printer-symbolic", _("Print"));
+    gtk_widget_set_halign(button, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), button);
 
     separator = gtk_separator_new (GTK_ORIENTATION_VERTICAL);
     gtk_widget_set_margin_start (separator, 6);
     gtk_widget_set_margin_end (separator, 6);
-    gtk_box_pack_end (GTK_BOX (box), separator, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (separator));
+    gtk_widget_set_halign(separator, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), separator);
+
+    button = create_button ("win.zoom-out", "zoom-out-symbolic", _("Zoom Out"));
+    gtk_widget_set_halign(button, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), button);
+
+    button = create_button ("win.zoom-in", "zoom-in-symbolic", _("Zoom In"));
+    gtk_widget_set_halign(button, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), button);
+
+    button = create_button ("win.zoom-default", "zoom-original-symbolic", _("Zoom Reset"));
+    gtk_widget_set_halign(button, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), button);
+
+    ev_toolbar->expand_window_button = create_button ("win.toggle-fullscreen", "view-fullscreen-symbolic", _("Fullscreen"));
+    gtk_widget_set_halign(ev_toolbar->expand_window_button, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), ev_toolbar->expand_window_button);
 
     zoom_menu = g_menu_new();
-    ev_toolbar->priv->zoom_action = ev_zoom_action_new
-        (ev_window_get_document_model (ev_toolbar->priv->window), zoom_menu);
+    ev_toolbar->zoom_action = ev_zoom_action_new
+        (ev_window_get_document_model (ev_toolbar->window), zoom_menu);
     g_object_unref (zoom_menu);
-    gtk_widget_set_tooltip_text (ev_toolbar->priv->zoom_action,
+    gtk_widget_set_tooltip_text (ev_toolbar->zoom_action,
                                  _("Select or set the zoom level of the document"));
-    gtk_widget_set_margin_start(ev_toolbar->priv->zoom_action, 2);
-    gtk_box_pack_end (GTK_BOX (box), ev_toolbar->priv->zoom_action, FALSE, FALSE, 0);
-
-    action = gtk_action_group_get_action (action_group, "ViewExpandWindow");
-    ev_toolbar->priv->expand_window_button = create_button (action);
-    gtk_box_pack_end (GTK_BOX (box), ev_toolbar->priv->expand_window_button, FALSE, FALSE, 0);
-
-    action = gtk_action_group_get_action (action_group, "ViewZoomReset");
-    button = create_button (action);
-    gtk_box_pack_end (GTK_BOX (box), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
-
-    action = gtk_action_group_get_action (action_group, "ViewZoomIn");
-    button = create_button (action);
-    gtk_box_pack_end (GTK_BOX (box), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
-
-    action = gtk_action_group_get_action (action_group, "ViewZoomOut");
-    button = create_button (action);
-    gtk_box_pack_end (GTK_BOX (box), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
-
-    /* Side pane button */
-    action = gtk_action_group_get_action (action_group, "ViewSidebar");
-    button = create_sidepane_button (action);
-    gtk_box_pack_start (GTK_BOX (box), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
+    gtk_widget_set_margin_start(ev_toolbar->zoom_action, 2);
+    gtk_widget_set_halign(ev_toolbar->zoom_action, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), ev_toolbar->zoom_action);
 
     separator = gtk_separator_new (GTK_ORIENTATION_VERTICAL);
     gtk_widget_set_margin_start (separator, 6);
     gtk_widget_set_margin_end (separator, 6);
-    gtk_box_pack_start (GTK_BOX (box), separator, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (separator));
-
-    /* Print button */
-    action = gtk_action_group_get_action (action_group, "FilePrint");
-    button = create_button (action);
-    gtk_box_pack_start (GTK_BOX (box), button, FALSE, FALSE, 0);
-    gtk_widget_show (GTK_WIDGET (button));
+    gtk_widget_set_halign(separator, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (box), separator);
 
     /* View preset button */
-    tool_item = gtk_tool_item_new ();
-    gtk_container_add (GTK_CONTAINER (ev_toolbar), GTK_WIDGET (tool_item));
-    ev_toolbar->priv->preset_group = setup_preset_buttons (ev_toolbar);
-    gtk_container_add (GTK_CONTAINER (tool_item), ev_toolbar->priv->preset_group);
-    gtk_widget_show_all (GTK_WIDGET (tool_item));
+    ev_toolbar->preset_group = setup_preset_buttons (ev_toolbar);
+    gtk_widget_set_halign(ev_toolbar->preset_group, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (ev_toolbar), ev_toolbar->preset_group);
 
     /* Setup the buttons we only want to show when fullscreened */
-    tool_item = gtk_tool_item_new ();
-    gtk_container_add (GTK_CONTAINER (ev_toolbar), GTK_WIDGET (tool_item));
-    gtk_widget_show (GTK_WIDGET (tool_item));
-    ev_toolbar->priv->fullscreen_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-    gtk_container_add (GTK_CONTAINER (tool_item), ev_toolbar->priv->fullscreen_group);
+    ev_toolbar->fullscreen_group = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_halign(ev_toolbar->fullscreen_group, GTK_ALIGN_END);
+    gtk_box_append (GTK_BOX (ev_toolbar), ev_toolbar->fullscreen_group);
 
-    action = gtk_action_group_get_action (action_group, "LeaveFullscreen");
-    button = create_button (action);
-    gtk_box_pack_end (GTK_BOX (ev_toolbar->priv->fullscreen_group), button, FALSE, FALSE, 0);
+    button = create_button ("win.presentation", "media-playback-start-symbolic", _("Presentation"));
+    gtk_box_append (GTK_BOX (ev_toolbar->fullscreen_group), button);
 
     separator = gtk_separator_new (GTK_ORIENTATION_VERTICAL);
     gtk_widget_set_margin_start (separator, 6);
     gtk_widget_set_margin_end (separator, 6);
-    gtk_box_pack_end (GTK_BOX (ev_toolbar->priv->fullscreen_group), separator, FALSE, FALSE, 0);
+    gtk_box_append (GTK_BOX (ev_toolbar->fullscreen_group), separator);
 
-    action = gtk_action_group_get_action (action_group, "StartPresentation");
-    button = create_button (action);
-    gtk_box_pack_end (GTK_BOX (ev_toolbar->priv->fullscreen_group), button, FALSE, FALSE, 0);
+    button = create_button ("win.unfullscreen", "view-restore-symbolic", _("Leave Fullscreen"));
+    gtk_box_append (GTK_BOX (ev_toolbar->fullscreen_group), button);
 
-    g_signal_connect (ev_toolbar->priv->model, "notify::continuous",
+    g_signal_connect (ev_toolbar->model, "notify::continuous",
                       G_CALLBACK (ev_toolbar_document_model_changed_cb), ev_toolbar);
-    g_signal_connect (ev_toolbar->priv->model, "notify::sizing-mode",
+    g_signal_connect (ev_toolbar->model, "notify::sizing-mode",
                       G_CALLBACK (ev_toolbar_document_model_changed_cb), ev_toolbar);
 
     /* Toolbar buttons visibility bindings */
-    g_settings_bind (ev_toolbar->priv->settings, GS_SHOW_EXPAND_WINDOW,
-                     ev_toolbar->priv->expand_window_button, "visible",
+    g_settings_bind (ev_toolbar->settings, GS_SHOW_EXPAND_WINDOW,
+                     ev_toolbar->expand_window_button, "visible",
                      G_SETTINGS_BIND_DEFAULT);
-    g_settings_bind (ev_toolbar->priv->settings, GS_SHOW_ZOOM_ACTION,
-                     ev_toolbar->priv->zoom_action, "visible",
+    g_settings_bind (ev_toolbar->settings, GS_SHOW_ZOOM_ACTION,
+                     ev_toolbar->zoom_action, "visible",
                      G_SETTINGS_BIND_DEFAULT);
-    g_settings_bind (ev_toolbar->priv->settings, GS_SHOW_HISTORY_BUTTONS,
-                     ev_toolbar->priv->history_group, "visible",
+    g_settings_bind (ev_toolbar->settings, GS_SHOW_HISTORY_BUTTONS,
+                     ev_toolbar->history_group, "visible",
                      G_SETTINGS_BIND_DEFAULT);
 
-    ev_toolbar_document_model_changed_cb (ev_toolbar->priv->model, NULL, ev_toolbar);
+    ev_toolbar_document_model_changed_cb (ev_toolbar->model, NULL, ev_toolbar);
+}
+
+static void
+ev_toolbar_finalize (GObject *object)
+{
+    EvToolbar *ev_toolbar = EV_TOOLBAR (object);
+
+    g_clear_object (&ev_toolbar->settings);
+
+    G_OBJECT_CLASS (ev_toolbar_parent_class)->finalize (object);
 }
 
 static void
@@ -385,6 +346,7 @@ ev_toolbar_class_init (EvToolbarClass *klass)
 
     object_class->set_property = ev_toolbar_set_property;
     object_class->constructed = ev_toolbar_constructed;
+    object_class->finalize = ev_toolbar_finalize;
 
     g_object_class_install_property (object_class,
                                      PROP_WINDOW,
@@ -400,8 +362,7 @@ ev_toolbar_class_init (EvToolbarClass *klass)
 static void
 ev_toolbar_init (EvToolbar *ev_toolbar)
 {
-    ev_toolbar->priv = ev_toolbar_get_instance_private (ev_toolbar);
-    ev_toolbar->priv->settings = g_settings_new (GS_SCHEMA_NAME_TOOLBAR);
+    ev_toolbar->settings = g_settings_new (GS_SCHEMA_NAME_TOOLBAR);
 }
 
 GtkWidget *
@@ -418,17 +379,17 @@ ev_toolbar_set_style (EvToolbar *ev_toolbar,
 {
     g_return_if_fail (EV_IS_TOOLBAR (ev_toolbar));
 
-    if (is_fullscreen && gtk_style_context_has_class (ev_toolbar->priv->style_context, "primary-toolbar"))
+    if (is_fullscreen)
     {
-        gtk_style_context_remove_class (ev_toolbar->priv->style_context, "primary-toolbar");
-        gtk_widget_show_all (ev_toolbar->priv->fullscreen_group);
-        gtk_widget_hide (ev_toolbar->priv->expand_window_button);
+        gtk_widget_remove_css_class (GTK_WIDGET (ev_toolbar), "primary-toolbar");
+        gtk_widget_set_visible (ev_toolbar->fullscreen_group, TRUE);
+        gtk_widget_set_visible (ev_toolbar->expand_window_button, FALSE);
     }
-    else if (!is_fullscreen && !gtk_style_context_has_class (ev_toolbar->priv->style_context, "primary-toolbar"))
+    else
     {
-        gtk_style_context_add_class (ev_toolbar->priv->style_context, "primary-toolbar");
-        gtk_widget_hide (ev_toolbar->priv->fullscreen_group);
-        gtk_widget_show_all (ev_toolbar->priv->expand_window_button);
+        gtk_widget_add_css_class (GTK_WIDGET (ev_toolbar), "primary-toolbar");
+        gtk_widget_set_visible (ev_toolbar->fullscreen_group, FALSE);
+        gtk_widget_set_visible (ev_toolbar->expand_window_button, TRUE);
     }
 }
 
@@ -438,7 +399,7 @@ ev_toolbar_set_preset_sensitivity (EvToolbar *ev_toolbar,
 {
     g_return_if_fail (EV_IS_TOOLBAR (ev_toolbar));
 
-    gtk_widget_set_sensitive (ev_toolbar->priv->preset_group, sensitive);
+    gtk_widget_set_sensitive (ev_toolbar->preset_group, sensitive);
 }
 
 void
@@ -446,7 +407,7 @@ ev_toolbar_activate_reader_view (EvToolbar *ev_toolbar)
 {
     g_return_if_fail (EV_IS_TOOLBAR (ev_toolbar));
 
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->priv->reader_preset_button), TRUE);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->reader_preset_button), TRUE);
 }
 
 void
@@ -454,5 +415,5 @@ ev_toolbar_activate_page_view (EvToolbar *ev_toolbar)
 {
     g_return_if_fail (EV_IS_TOOLBAR (ev_toolbar));
 
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->priv->page_preset_button), TRUE);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (ev_toolbar->page_preset_button), TRUE);
 }

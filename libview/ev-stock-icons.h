@@ -50,7 +50,6 @@ G_BEGIN_DECLS
 
 void ev_stock_icons_init       (void);
 void ev_stock_icons_shutdown   (void);
-void ev_stock_icons_set_screen (GdkScreen *screen);
 
 G_END_DECLS
 

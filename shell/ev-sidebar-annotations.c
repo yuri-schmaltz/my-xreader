@@ -51,7 +51,7 @@ struct _EvSidebarAnnotationsPrivate {
 	EvDocument  *document;
 
 	GtkWidget *tree_view;
-	GtkWidget *toolbar;
+	GtkWidget *toolbar_box;
 
 	EvJob *job;
 	guint selection_changed_id;
@@ -94,7 +94,7 @@ ev_sidebar_annotations_create_simple_model (const gchar *message)
 	/* Creates a fake model to indicate that we're loading */
 	retval = (GtkTreeModel *)gtk_list_store_new (N_COLUMNS,
 						     G_TYPE_STRING,
-						     GDK_TYPE_PIXBUF,
+						     G_TYPE_STRING,
 						     G_TYPE_POINTER);
 
 	gtk_list_store_append (GTK_LIST_STORE (retval), &iter);
@@ -118,7 +118,7 @@ ev_sidebar_annotations_init (EvSidebarAnnotations *ev_annots)
 	GtkTreeViewColumn *column;
 	GtkTreeSelection *selection;
 	GtkWidget *separator;
-	GtkWidget *toolbar;
+	GtkWidget *toolbar_box;
 	GtkWidget *toolitem;
 	GtkWidget *hbox;
 
@@ -126,8 +126,8 @@ ev_sidebar_annotations_init (EvSidebarAnnotations *ev_annots)
 
 	gtk_orientable_set_orientation (GTK_ORIENTABLE (ev_annots), GTK_ORIENTATION_VERTICAL);
 
-	swindow = gtk_scrolled_window_new (NULL, NULL);
-	gtk_box_pack_start (GTK_BOX (ev_annots), swindow, TRUE, TRUE, 0);
+	swindow = gtk_scrolled_window_new ();
+	gtk_box_append (GTK_BOX (ev_annots), swindow); gtk_widget_set_vexpand(swindow, TRUE); gtk_widget_set_hexpand(swindow, TRUE);
 	gtk_widget_show (swindow);
 
 	/* Create tree view */
@@ -144,7 +144,7 @@ ev_sidebar_annotations_init (EvSidebarAnnotations *ev_annots)
 	renderer = gtk_cell_renderer_pixbuf_new ();
 	gtk_tree_view_column_pack_start (column, renderer, FALSE);
 	gtk_tree_view_column_set_attributes (column, renderer,
-					     "pixbuf", COLUMN_ICON,
+					     "icon-name", COLUMN_ICON,
 					     NULL);
 
 	renderer = gtk_cell_renderer_text_new ();
@@ -154,29 +154,25 @@ ev_sidebar_annotations_init (EvSidebarAnnotations *ev_annots)
 					     NULL);
 	gtk_tree_view_append_column (GTK_TREE_VIEW (ev_annots->priv->tree_view), column);
 
-	gtk_container_add (GTK_CONTAINER (swindow), ev_annots->priv->tree_view);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (swindow), ev_annots->priv->tree_view);
 	gtk_widget_show (ev_annots->priv->tree_view);
 
 	separator = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
-	gtk_box_pack_start (GTK_BOX (ev_annots), separator, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (ev_annots), separator);
 	gtk_widget_show (separator);
 
-	toolbar = gtk_toolbar_new ();
-	gtk_widget_show (toolbar);
-
-	toolitem = GTK_WIDGET (gtk_tool_item_new ());
-	gtk_toolbar_insert (GTK_TOOLBAR (toolbar), GTK_TOOL_ITEM (toolitem), 0);
-	gtk_widget_show (toolitem);
+	toolbar_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_widget_show (toolbar_box);
 
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-	gtk_container_add (GTK_CONTAINER (toolitem), hbox);
+	gtk_box_append (GTK_BOX (toolbar_box), hbox);
 	gtk_widget_show (hbox);
 
 	/* Create annotation tool bar */
-	ev_annots->priv->toolbar = ev_annotations_toolbar_new();
-	gtk_widget_show (ev_annots->priv->toolbar);
+	ev_annots->priv->toolbar_box = ev_annotations_toolbar_new();
+	gtk_widget_show (ev_annots->priv->toolbar_box);
 
-	gtk_box_pack_end (GTK_BOX (ev_annots), ev_annots->priv->toolbar, FALSE, TRUE, 0);
+	gtk_box_append (GTK_BOX (ev_annots), ev_annots->priv->toolbar_box);
 	gtk_widget_show (GTK_WIDGET (ev_annots));
 }
 
@@ -192,7 +188,7 @@ ev_sidebar_annotations_get_property (GObject    *object,
 
 	switch (prop_id) {
 	        case PROP_WIDGET:
-			g_value_set_object (value, ev_sidebar_annots->priv->toolbar);
+			g_value_set_object (value, ev_sidebar_annots->priv->toolbar_box);
 			break;
 	        default:
 			G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -245,7 +241,7 @@ EvAnnotationsToolbar *
 ev_sidebar_annotations_get_toolbar(EvSidebarAnnotations *sidebar_annots)
 {
 	EvSidebarAnnotationsPrivate *priv = ev_sidebar_annotations_get_instance_private(sidebar_annots);
-	return EV_ANNOTATIONS_TOOLBAR(priv->toolbar);
+	return EV_ANNOTATIONS_TOOLBAR(priv->toolbar_box);
 }
 
 
@@ -275,14 +271,7 @@ job_finished_callback (EvJobAnnots          *job,
 	GtkTreeStore *model;
 	GtkTreeSelection *selection;
 	GList *l;
-	GtkIconTheme *icon_theme;
-	GdkScreen *screen;
-	GdkPixbuf *text_icon = NULL;
-	GdkPixbuf *attachment_icon = NULL;
-        GdkPixbuf *highlight_icon = NULL;
-        GdkPixbuf *strike_out_icon = NULL;
-        GdkPixbuf *underline_icon = NULL;
-        GdkPixbuf *squiggly_icon = NULL;
+	const gchar *icon_name = NULL;
 
 	priv = sidebar_annots->priv;
 
@@ -310,7 +299,7 @@ job_finished_callback (EvJobAnnots          *job,
 
 	model = gtk_tree_store_new (N_COLUMNS,
 				    G_TYPE_STRING,
-				    GDK_TYPE_PIXBUF,
+				    G_TYPE_STRING,
 				    G_TYPE_POINTER);
 
 	for (l = job->annots; l; l = g_list_next (l)) {
@@ -329,8 +318,8 @@ job_finished_callback (EvJobAnnots          *job,
 				    -1);
 		g_free (page_label);
 
-		screen = gdk_screen_get_default ();
-		icon_theme = gtk_icon_theme_get_for_screen (screen);
+		
+		
 
 		for (ll = ev_mapping_list_get_list (mapping_list); ll; ll = g_list_next (ll)) {
 			EvAnnotation *annot;
@@ -338,7 +327,7 @@ job_finished_callback (EvJobAnnots          *job,
 			const gchar  *modified;
 			gchar        *markup;
 			GtkTreeIter   child_iter;
-			GdkPixbuf    *pixbuf = NULL;
+			
 
 			annot = ((EvMapping *)(ll->data))->data;
 			if (!EV_IS_ANNOTATION_MARKUP (annot))
@@ -354,59 +343,22 @@ job_finished_callback (EvJobAnnots          *job,
 			}
 
 			if (EV_IS_ANNOTATION_TEXT (annot)) {
-				if (!text_icon) {
-					/* FIXME: use a better icon than EDIT */
-					text_icon = gtk_icon_theme_load_icon (icon_theme,
-														  "starred",
-														  16,
-														  GTK_ICON_LOOKUP_FORCE_REGULAR,
-														  NULL);
-				}
-				pixbuf = text_icon;
+				icon_name = "starred";
 			} else if (EV_IS_ANNOTATION_ATTACHMENT (annot)) {
-				if (!attachment_icon) {
-					attachment_icon = gtk_icon_theme_load_icon (icon_theme,
-																"mail-attachment",
-																16,
-																GTK_ICON_LOOKUP_FORCE_REGULAR,
-																NULL);
-				}
-				pixbuf = attachment_icon;
+				icon_name = "mail-attachment";
 			} else if (EV_IS_ANNOTATION_TEXT_MARKUP (annot)) {
                                 switch (ev_annotation_text_markup_get_markup_type (EV_ANNOTATION_TEXT_MARKUP (annot))) {
                                 case EV_ANNOTATION_TEXT_MARKUP_HIGHLIGHT:
-                                        if (!highlight_icon) {
-                                                /* FIXME: use better icon than select all */
-                                                highlight_icon = gtk_widget_render_icon_pixbuf (priv->tree_view,
-                                                                                                GTK_STOCK_SELECT_ALL,
-                                                                                                GTK_ICON_SIZE_BUTTON);
-                                        }
-                                        pixbuf = highlight_icon;
-
+                                        icon_name = "edit-select-all";
                                         break;
                                 case EV_ANNOTATION_TEXT_MARKUP_STRIKE_OUT:
-                                        if (!strike_out_icon) {
-                                                strike_out_icon = gtk_widget_render_icon_pixbuf (priv->tree_view,
-                                                                                                 GTK_STOCK_STRIKETHROUGH,
-                                                                                                 GTK_ICON_SIZE_BUTTON);
-                                        }
-                                        pixbuf = strike_out_icon;
+                                        icon_name = "format-text-strikethrough";
                                         break;
                                 case EV_ANNOTATION_TEXT_MARKUP_UNDERLINE:
-                                        if (!underline_icon) {
-                                                underline_icon = gtk_widget_render_icon_pixbuf (priv->tree_view,
-                                                                                                GTK_STOCK_UNDERLINE,
-                                                                                                GTK_ICON_SIZE_BUTTON);
-                                        }
-                                        pixbuf = underline_icon;
+                                        icon_name = "format-text-underline";
                                         break;
                                 case EV_ANNOTATION_TEXT_MARKUP_SQUIGGLY:
-                                        if (!squiggly_icon) {
-                                                squiggly_icon = gtk_widget_render_icon_pixbuf (priv->tree_view,
-                                                                                               GTK_STOCK_UNDERLINE,
-                                                                                               GTK_ICON_SIZE_BUTTON);
-                                        }
-                                        pixbuf = squiggly_icon;
+                                        icon_name = "format-text-underline";
                                         break;
                                 }
                         }
@@ -414,7 +366,7 @@ job_finished_callback (EvJobAnnots          *job,
 			gtk_tree_store_append (model, &child_iter, &iter);
 			gtk_tree_store_set (model, &child_iter,
 					    COLUMN_MARKUP, markup,
-					    COLUMN_ICON, pixbuf,
+					    COLUMN_ICON, icon_name,
 					    COLUMN_ANNOT_MAPPING, ll->data,
 					    -1);
 			g_free (markup);
@@ -429,18 +381,7 @@ job_finished_callback (EvJobAnnots          *job,
 				 GTK_TREE_MODEL (model));
 	g_object_unref (model);
 
-	if (text_icon)
-		g_object_unref (text_icon);
-	if (attachment_icon)
-		g_object_unref (attachment_icon);
-        if (highlight_icon)
-                g_object_unref (highlight_icon);
-        if (strike_out_icon)
-                g_object_unref (strike_out_icon);
-        if (underline_icon)
-                g_object_unref (underline_icon);
-        if (squiggly_icon)
-                g_object_unref (squiggly_icon);
+
 
 	g_object_unref (job);
 	priv->job = NULL;

@@ -400,18 +400,19 @@ ev_sidebar_thumbnails_set_size (EvSidebarThumbnails *sidebar_thumbnails, gint si
 }
 
 static gboolean
-ev_sidebar_thumbnails_scroll_event (GtkWidget           *widget,
-                                    GdkEventScroll      *event,
-                                    EvSidebarThumbnails *sidebar_thumbnails)
+ev_sidebar_thumbnails_scroll_event (GtkEventControllerScroll *controller,
+                                    gdouble                   dx,
+                                    gdouble                   dy,
+                                    EvSidebarThumbnails      *sidebar_thumbnails)
 {
-    guint state = event->state & gtk_accelerator_get_default_mod_mask ();
+    guint state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (controller)) & gtk_accelerator_get_default_mod_mask ();
 
     if (state == GDK_CONTROL_MASK) {
-        if ((event->delta_y < 0 || event->delta_x > 0)
+        if ((dy < 0 || dx > 0)
           && ev_sidebar_thumbnails_can_zoom_in (sidebar_thumbnails)) {
             ev_sidebar_thumbnails_zoom_in (sidebar_thumbnails);
             return TRUE;
-        } else if ((event->delta_y > 0 || event->delta_x < 0)
+        } else if ((dy > 0 || dx < 0)
                  && ev_sidebar_thumbnails_can_zoom_out (sidebar_thumbnails)) {
             ev_sidebar_thumbnails_zoom_out (sidebar_thumbnails);
             return TRUE;
@@ -817,10 +818,12 @@ ev_sidebar_init_tree_view (EvSidebarThumbnails *ev_sidebar_thumbnails)
 						     NULL, gtk_cell_renderer_text_new (),
 						     "markup", 0, NULL);
 
-	g_signal_connect (priv->tree_view, "scroll-event",
+	GtkEventController *tree_scroll = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+	g_signal_connect (tree_scroll, "scroll",
 			  G_CALLBACK (ev_sidebar_thumbnails_scroll_event), ev_sidebar_thumbnails);
+	gtk_widget_add_controller (priv->tree_view, tree_scroll);
 
-	gtk_container_add (GTK_CONTAINER (priv->swindow), priv->tree_view);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (priv->swindow), priv->tree_view);
 	gtk_widget_show (priv->tree_view);
 }
 
@@ -858,10 +861,12 @@ ev_sidebar_init_icon_view (EvSidebarThumbnails *ev_sidebar_thumbnails)
 	g_signal_connect (priv->icon_view, "selection-changed",
 			  G_CALLBACK (ev_sidebar_icon_selection_changed), ev_sidebar_thumbnails);
 
-	g_signal_connect (priv->icon_view, "scroll-event",
+	GtkEventController *icon_scroll = gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+	g_signal_connect (icon_scroll, "scroll",
 			  G_CALLBACK (ev_sidebar_thumbnails_scroll_event), ev_sidebar_thumbnails);
+	gtk_widget_add_controller (priv->icon_view, icon_scroll);
 
-	gtk_container_add (GTK_CONTAINER (priv->swindow), priv->icon_view);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (priv->swindow), priv->icon_view);
 	gtk_widget_show (priv->icon_view);
 }
 
@@ -896,9 +901,7 @@ ev_sidebar_thumbnails_init (EvSidebarThumbnails *ev_sidebar_thumbnails)
 	GtkWidget *separator;
 	guint signal_id;
 	GtkWidget *toolbar;
-	GtkWidget *toolitem;
 	GtkWidget *button;
-	GtkWidget *hbox;
 	GtkWidget *image;
 
 	priv = ev_sidebar_thumbnails->priv = ev_sidebar_thumbnails_get_instance_private (ev_sidebar_thumbnails);
@@ -916,7 +919,9 @@ ev_sidebar_thumbnails_init (EvSidebarThumbnails *ev_sidebar_thumbnails)
 			  G_CALLBACK (ev_sidebar_thumbnails_row_changed),
 			  GUINT_TO_POINTER (signal_id));
 
-	priv->swindow = gtk_scrolled_window_new (NULL, NULL);
+	priv->swindow = gtk_scrolled_window_new ();
+	gtk_widget_set_hexpand (priv->swindow, TRUE);
+	gtk_widget_set_vexpand (priv->swindow, TRUE);
 
 	priv->thumbnail_width = THUMBNAIL_DEFAULT_WIDTH;
 
@@ -930,65 +935,47 @@ ev_sidebar_thumbnails_init (EvSidebarThumbnails *ev_sidebar_thumbnails)
 	g_signal_connect_swapped (priv->swindow, "size-allocate",
 				  G_CALLBACK (adjustment_changed_cb),
 				  ev_sidebar_thumbnails);
-	gtk_box_pack_start (GTK_BOX (ev_sidebar_thumbnails), priv->swindow, TRUE, TRUE, 0);
+	gtk_box_append (GTK_BOX (ev_sidebar_thumbnails), priv->swindow);
 
 	separator = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
-	gtk_box_pack_start (GTK_BOX (ev_sidebar_thumbnails), separator, FALSE, FALSE, 0);
-	gtk_widget_show (separator);
+	gtk_box_append (GTK_BOX (ev_sidebar_thumbnails), separator);
 
-	toolbar = gtk_toolbar_new ();
-	gtk_widget_show (toolbar);
-
-	toolitem = GTK_WIDGET (gtk_tool_item_new ());
-	gtk_toolbar_insert (GTK_TOOLBAR (toolbar), GTK_TOOL_ITEM (toolitem), 0);
-	gtk_widget_show (toolitem);
-
-	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-	gtk_container_add (GTK_CONTAINER (toolitem), hbox);
-	gtk_widget_show (hbox);
+	toolbar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_widget_set_halign (toolbar, GTK_ALIGN_CENTER);
+	gtk_box_append (GTK_BOX (ev_sidebar_thumbnails), toolbar);
 
 	button = gtk_button_new ();
-	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
-	image = gtk_image_new_from_icon_name ("xsi-zoom-out-symbolic", GTK_ICON_SIZE_BUTTON);
-	gtk_container_add (GTK_CONTAINER (button), image);
-	gtk_widget_show (image);
+	gtk_button_set_has_frame (GTK_BUTTON (button), FALSE);
+	image = gtk_image_new_from_icon_name ("xsi-zoom-out-symbolic");
+	gtk_button_set_child (GTK_BUTTON (button), image);
 
-	gtk_box_pack_start (GTK_BOX (hbox), button, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (toolbar), button);
 	gtk_widget_set_tooltip_text (GTK_WIDGET (button), _("Shrink the thumbnails"));
 	g_signal_connect (button, "clicked",
 			  G_CALLBACK (ev_sidebar_thumbnails_cmd_zoom_out),
 			  ev_sidebar_thumbnails);
-	gtk_widget_show (GTK_WIDGET (button));
 
 	button = gtk_button_new ();
-	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
-	image = gtk_image_new_from_icon_name ("xsi-zoom-in-symbolic", GTK_ICON_SIZE_BUTTON);
-	gtk_container_add (GTK_CONTAINER (button), image);
-	gtk_widget_show (image);
+	gtk_button_set_has_frame (GTK_BUTTON (button), FALSE);
+	image = gtk_image_new_from_icon_name ("xsi-zoom-in-symbolic");
+	gtk_button_set_child (GTK_BUTTON (button), image);
 
-	gtk_box_pack_start (GTK_BOX (hbox), button, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (toolbar), button);
 	gtk_widget_set_tooltip_text (GTK_WIDGET (button), _("Enlarge the thumbnails"));
 	g_signal_connect (button, "clicked",
 			  G_CALLBACK (ev_sidebar_thumbnails_cmd_zoom_in),
 			  ev_sidebar_thumbnails);
-	gtk_widget_show (GTK_WIDGET (button));
 
 	button = gtk_button_new ();
-	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
-	image = gtk_image_new_from_icon_name ("xsi-zoom-original-symbolic", GTK_ICON_SIZE_BUTTON);
-	gtk_container_add (GTK_CONTAINER (button), image);
-	gtk_widget_show (image);
+	gtk_button_set_has_frame (GTK_BUTTON (button), FALSE);
+	image = gtk_image_new_from_icon_name ("xsi-zoom-original-symbolic");
+	gtk_button_set_child (GTK_BUTTON (button), image);
 
-	gtk_box_pack_start (GTK_BOX (hbox), button, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (toolbar), button);
 	gtk_widget_set_tooltip_text (GTK_WIDGET (button), _("View the thumbnails at their original size"));
 	g_signal_connect (button, "clicked",
 			  G_CALLBACK (ev_sidebar_thumbnails_cmd_zoom_reset),
 			  ev_sidebar_thumbnails);
-	gtk_widget_show (GTK_WIDGET (button));
-
-	/* Put it all together */
-	gtk_box_pack_end (GTK_BOX (ev_sidebar_thumbnails), toolbar, FALSE, TRUE, 0);
-	gtk_widget_show_all (priv->swindow);
 }
 
 static void
@@ -1139,7 +1126,7 @@ ev_sidebar_thumbnails_document_changed_cb (EvDocumentModel     *model,
 	/* Create the view widget, and remove the old one, if needed */
 	if (ev_sidebar_thumbnails_use_icon_view (sidebar_thumbnails)) {
 		if (priv->tree_view) {
-			gtk_container_remove (GTK_CONTAINER (priv->swindow), priv->tree_view);
+			gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (priv->swindow), NULL);
 			priv->tree_view = NULL;
 		}
 
@@ -1151,7 +1138,7 @@ ev_sidebar_thumbnails_document_changed_cb (EvDocumentModel     *model,
 		}
 	} else {
 		if (priv->icon_view) {
-			gtk_container_remove (GTK_CONTAINER (priv->swindow), priv->icon_view);
+			gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (priv->swindow), NULL);
 			priv->icon_view = NULL;
 		}
 

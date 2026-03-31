@@ -25,6 +25,7 @@
 #define __EV_ATTACHMENT_H__
 
 #include <glib-object.h>
+#include <gdk/gdk.h>
 #include <gio/gio.h>
 
 G_BEGIN_DECLS
@@ -70,7 +71,7 @@ gboolean     ev_attachment_save                  (EvAttachment *attachment,
 						  GFile        *file,
 						  GError      **error);
 gboolean     ev_attachment_open                  (EvAttachment *attachment,
-						  GdkScreen    *screen,
+						  GdkDisplay   *display,
 						  guint32       timestamp,
 						  GError      **error);
 

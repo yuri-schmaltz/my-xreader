@@ -31,8 +31,9 @@
 
 G_BEGIN_DECLS
 
-EvDocument* ev_document_factory_get_document (const char *uri, GError **error);
-void 	    ev_document_factory_add_filters  (GtkWidget *chooser, EvDocument *document);
+EvDocument* ev_document_factory_get_document  (const char *uri, GError **error);
+GListStore* ev_document_factory_get_filters    (EvDocument *document);
+void 	    ev_document_factory_add_filters   (GtkWidget *chooser, EvDocument *document);
 
 G_END_DECLS
 

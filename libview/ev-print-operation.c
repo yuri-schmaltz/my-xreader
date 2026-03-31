@@ -869,7 +869,6 @@ export_print_done (EvPrintOperationExport *export)
 
 			if (app != NULL) {
 				ctx = gdk_display_get_app_launch_context (gtk_widget_get_display (GTK_WIDGET (export->parent_window)));
-				gdk_app_launch_context_set_screen (ctx, gtk_window_get_screen (export->parent_window));
 
 				g_app_info_launch (app, NULL, G_APP_LAUNCH_CONTEXT (ctx), &error);
 
@@ -1154,7 +1153,7 @@ ev_print_operation_export_print_dialog_response_cb (GtkDialog              *dial
 	
 	if (response != GTK_RESPONSE_OK &&
 	    response != GTK_RESPONSE_APPLY) {
-		gtk_widget_destroy (GTK_WIDGET (dialog));
+		gtk_window_destroy (GTK_WINDOW (dialog));
 		g_signal_emit (op, signals[DONE], 0, GTK_PRINT_OPERATION_RESULT_CANCEL);
 
 		return;
@@ -1176,7 +1175,7 @@ ev_print_operation_export_print_dialog_response_cb (GtkDialog              *dial
 
 	if ((format == EV_FILE_FORMAT_PS && !gtk_printer_accepts_ps (export->printer)) ||
 	    (format == EV_FILE_FORMAT_PDF && !gtk_printer_accepts_pdf (export->printer))) {
-		gtk_widget_destroy (GTK_WIDGET (dialog));
+		gtk_window_destroy (GTK_WINDOW (dialog));
 		
 		g_set_error_literal (&export->error,
                                      GTK_PRINT_ERROR,
@@ -1191,7 +1190,7 @@ ev_print_operation_export_print_dialog_response_cb (GtkDialog              *dial
 	export->fd = g_file_open_tmp (filename, &export->temp_file, &error);
 	g_free (filename);
 	if (export->fd <= -1) {
-		gtk_widget_destroy (GTK_WIDGET (dialog));
+		gtk_window_destroy (GTK_WINDOW (dialog));
 		
 		g_set_error_literal (&export->error,
 				     GTK_PRINT_ERROR,
@@ -1249,7 +1248,7 @@ ev_print_operation_export_print_dialog_response_cb (GtkDialog              *dial
 		gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG (message_dialog),
 							  "%s", _("Your print range selection does not include any pages"));
 		g_signal_connect (message_dialog, "response",
-				  G_CALLBACK (gtk_widget_destroy),
+				  G_CALLBACK (gtk_window_destroy),
 				  NULL);
 		gtk_widget_show (message_dialog);
 
@@ -1308,7 +1307,7 @@ ev_print_operation_export_print_dialog_response_cb (GtkDialog              *dial
 
 	g_signal_emit (op, signals[BEGIN_PRINT], 0);
 	
-	gtk_widget_destroy (GTK_WIDGET (dialog));
+	gtk_window_destroy (GTK_WINDOW (dialog));
 }
 
 static void
@@ -1932,7 +1931,10 @@ ev_print_operation_print_create_custom_widget (EvPrintOperationPrint *print,
 	grid = gtk_grid_new ();
 	gtk_grid_set_row_spacing (GTK_GRID (grid), 6);
 	gtk_grid_set_column_spacing (GTK_GRID (grid), 12);
-	gtk_container_set_border_width (GTK_CONTAINER (grid), 12);
+	gtk_widget_set_margin_top (grid, 12);
+	gtk_widget_set_margin_bottom (grid, 12);
+	gtk_widget_set_margin_start (grid, 12);
+	gtk_widget_set_margin_end (grid, 12);
 
 	label = gtk_label_new (_("Page Scaling:"));
 	gtk_grid_attach (GTK_GRID (grid), label, 0, 0, 1, 1);

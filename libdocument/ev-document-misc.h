@@ -29,9 +29,13 @@
 #include <cairo.h>
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
-#include <gdk/gdkwayland.h>
 #include <gtk/gtk.h>
 #include "ev-macros.h"
+
+typedef struct {
+	int x;
+	int y;
+} GdkPoint;
 
 
 #define DEFAULT_DPI 96.0
@@ -48,11 +52,11 @@ GdkPixbuf *ev_document_misc_get_loading_thumbnail (int      width,
 						   gboolean inverted_colors);
 
 GdkPixbuf *ev_document_misc_render_loading_thumbnail    (GtkWidget *widget,
-							 int        width,
-							 int        height,
-							 gboolean   inverted_colors);
+						         int        width,
+						         int        height,
+						         gboolean   inverted_colors);
 GdkPixbuf *ev_document_misc_render_thumbnail_with_frame (GtkWidget *widget,
-							 GdkPixbuf *source_pixbuf);
+						         GdkPixbuf *source_pixbuf);
 
 EV_DEPRECATED
 void       ev_document_misc_get_page_border_size (gint          page_width,
@@ -74,7 +78,7 @@ cairo_surface_t *ev_document_misc_surface_rotate_and_scale (cairo_surface_t *sur
 void             ev_document_misc_invert_surface (cairo_surface_t *surface);
 void		 ev_document_misc_invert_pixbuf  (GdkPixbuf       *pixbuf);
 
-gdouble          ev_document_misc_get_screen_dpi (GdkScreen *screen, GdkMonitor *monitor);
+gdouble          ev_document_misc_get_screen_dpi (GdkDisplay *display, GdkMonitor *monitor);
 
 gdouble ev_document_misc_get_screen_dpi_at_window(GtkWindow *window);
 

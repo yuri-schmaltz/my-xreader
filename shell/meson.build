@@ -15,8 +15,7 @@ shell_sources = [
     'ev-file-monitor.c',
     'ev-history.c',
     'ev-history.h',
-    'ev-history-action.c',
-    'ev-history-action.h',
+
     'ev-history-action-widget.c',
     'ev-history-action-widget.h',
     'ev-keyring.h',
@@ -39,9 +38,7 @@ shell_sources = [
     'ev-properties-view.h',
     'ev-preferences-dialog.c',
     'ev-preferences-dialog.h',
-    'ev-open-recent-action.c',
-    'ev-open-recent-action.h',
-    'ev-toolbar.c',
+            'ev-toolbar.c',
     'ev-toolbar.h',
     'ev-utils.c',
     'ev-utils.h',
@@ -92,9 +89,9 @@ xreader_deps = [
     gio,
     glib,
     gtk,
+    xapp,
     libsecret,
     math,
-    xapp,
 ]
 
 if get_option('enable_dbus')
@@ -137,8 +134,6 @@ libshell_deps = [
     libview_dep,
     libmisc_dep,
     libtotemscrsaver_dep,
-    libsmclient_dep,
-    libephyzoom_dep,
 ]
 
 libshell = static_library(

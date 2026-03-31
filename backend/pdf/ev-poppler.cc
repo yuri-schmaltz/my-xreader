@@ -1886,8 +1886,8 @@ pdf_selection_render_selection (EvSelection      *selection,
 				EvRectangle      *points,
 				EvRectangle      *old_points,
 				EvSelectionStyle  style,
-				GdkColor         *text,
-				GdkColor         *base)
+				GdkRGBA          *text,
+				GdkRGBA          *base)
 {
 	PopplerPage *poppler_page;
 	cairo_t *cr;
@@ -1902,13 +1902,13 @@ pdf_selection_render_selection (EvSelection      *selection,
 	width = (int) ((width_points * rc->scale) + 0.5);
 	height = (int) ((height_points * rc->scale) + 0.5);
 
-	text_color.red = text->red;
-	text_color.green = text->green;
-	text_color.blue = text->blue;
+	text_color.red = (guint16) CLAMP (text->red * 65535. + 0.5, 0, 65535);
+	text_color.green = (guint16) CLAMP (text->green * 65535. + 0.5, 0, 65535);
+	text_color.blue = (guint16) CLAMP (text->blue * 65535. + 0.5, 0, 65535);
 
-	base_color.red = base->red;
-	base_color.green = base->green;
-	base_color.blue = base->blue;
+	base_color.red = (guint16) CLAMP (base->red * 65535. + 0.5, 0, 65535);
+	base_color.green = (guint16) CLAMP (base->green * 65535. + 0.5, 0, 65535);
+	base_color.blue = (guint16) CLAMP (base->blue * 65535. + 0.5, 0, 65535);
 
 	if (*surface == NULL) {
 		*surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,

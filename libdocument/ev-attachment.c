@@ -21,6 +21,7 @@
 #include <glib/gi18n-lib.h>
 #include <glib/gstdio.h>
 #include <gdk/gdk.h>
+#include <gtk/gtk.h>
 #include "ev-file-helpers.h"
 #include "ev-attachment.h"
 
@@ -341,14 +342,13 @@ ev_attachment_save (EvAttachment *attachment,
 
 static gboolean
 ev_attachment_launch_app (EvAttachment *attachment,
-			  GdkScreen    *screen,
+			  GdkDisplay   *display,
 			  guint32       timestamp,
 			  GError      **error)
 {
 	gboolean           result;
 	GList             *files = NULL;
 	GdkAppLaunchContext *context;
-	GdkDisplay          *display;
 	GError            *ioerror = NULL;
 
 	g_assert (G_IS_FILE (attachment->priv->tmp_file));
@@ -356,9 +356,9 @@ ev_attachment_launch_app (EvAttachment *attachment,
 
 	files = g_list_prepend (files, attachment->priv->tmp_file);
 
-	display = screen ? gdk_screen_get_display (screen) : gdk_display_get_default ();
+	if (!display)
+		display = gdk_display_get_default ();
 	context = gdk_display_get_app_launch_context (display);
-	gdk_app_launch_context_set_screen (context, screen);
 	gdk_app_launch_context_set_timestamp (context, timestamp);
 
 	result = g_app_info_launch (attachment->priv->app, files,
@@ -387,7 +387,7 @@ ev_attachment_launch_app (EvAttachment *attachment,
 
 gboolean
 ev_attachment_open (EvAttachment *attachment,
-		    GdkScreen    *screen,
+		    GdkDisplay   *display,
 		    guint32       timestamp,
 		    GError      **error)
 {
@@ -412,7 +412,7 @@ ev_attachment_open (EvAttachment *attachment,
 	}
 
 	if (attachment->priv->tmp_file) {
-		retval = ev_attachment_launch_app (attachment, screen,
+		retval = ev_attachment_launch_app (attachment, display,
 						   timestamp, error);
 	} else {
                 char *basename;
@@ -431,7 +431,7 @@ ev_attachment_open (EvAttachment *attachment,
 				g_object_unref (attachment->priv->tmp_file);
 			attachment->priv->tmp_file = g_object_ref (file);
 
-			retval = ev_attachment_launch_app (attachment, screen,
+			retval = ev_attachment_launch_app (attachment, display,
 							   timestamp, error);
 		}
 

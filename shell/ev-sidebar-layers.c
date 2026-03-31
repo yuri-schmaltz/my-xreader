@@ -279,7 +279,7 @@ ev_sidebar_layers_init (EvSidebarLayers *ev_layers)
 	
 	ev_layers->priv = ev_sidebar_layers_get_instance_private (ev_layers);
 
-	swindow = gtk_scrolled_window_new (NULL, NULL);
+	swindow = gtk_scrolled_window_new ();
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (swindow),
 					GTK_POLICY_NEVER,
 					GTK_POLICY_AUTOMATIC);
@@ -292,11 +292,12 @@ ev_sidebar_layers_init (EvSidebarLayers *ev_layers)
 	gtk_tree_view_set_model (ev_layers->priv->tree_view, model);
 	g_object_unref (model);
 
-	gtk_container_add (GTK_CONTAINER (swindow),
-			   GTK_WIDGET (ev_layers->priv->tree_view));
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (swindow),
+			               GTK_WIDGET (ev_layers->priv->tree_view));
 
-	gtk_box_pack_start (GTK_BOX (ev_layers), swindow, TRUE, TRUE, 0);
-	gtk_widget_show_all (GTK_WIDGET (ev_layers));
+	gtk_widget_set_vexpand (swindow, TRUE);
+        gtk_widget_set_hexpand (swindow, TRUE);
+	gtk_box_append (GTK_BOX (ev_layers), swindow);
 }
 
 static void

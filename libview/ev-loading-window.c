@@ -80,22 +80,22 @@ ev_loading_window_init (EvLoadingWindow *window)
 	hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
 
 	window->spinner = gtk_spinner_new ();
-	gtk_box_pack_start (GTK_BOX (hbox), window->spinner, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (hbox), window->spinner);
 	gtk_widget_show (window->spinner);
 
 	label = gtk_label_new (loading_text);
-	gtk_box_pack_start (GTK_BOX (hbox), label, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (hbox), label);
 	gtk_widget_show (label);
 
-	gtk_container_add (GTK_CONTAINER (window), hbox);
+	gtk_window_set_child (GTK_WINDOW (window), hbox);
 	gtk_widget_show (hbox);
 
-	gtk_widget_set_app_paintable (widget, TRUE);
+	
 
-	gtk_container_set_border_width (GTK_CONTAINER (window), 10);
+	
 
-	gtk_window_set_type_hint (gtk_window, GDK_WINDOW_TYPE_HINT_NOTIFICATION);
-	gtk_window_set_accept_focus (gtk_window, FALSE);
+	
+	
 	gtk_window_set_decorated (gtk_window, FALSE);
 	gtk_window_set_resizable (gtk_window, FALSE);
 
@@ -113,8 +113,14 @@ ev_loading_window_init (EvLoadingWindow *window)
 		bg.alpha = 1.0;
 	}
 
-        gtk_widget_override_background_color (widget, GTK_STATE_NORMAL, &bg);
-        gtk_widget_override_color (widget, GTK_STATE_NORMAL, &fg);
+        gchar *css = g_strdup_printf ("* { background-color: rgba(%d,%d,%d,%f); color: rgba(%d,%d,%d,%f); }",
+                                      (int)(bg.red * 255), (int)(bg.green * 255), (int)(bg.blue * 255), bg.alpha,
+                                      (int)(fg.red * 255), (int)(fg.green * 255), (int)(fg.blue * 255), fg.alpha);
+        GtkCssProvider *provider = gtk_css_provider_new ();
+        gtk_css_provider_load_from_string (provider, css);
+        gtk_style_context_add_provider (gtk_widget_get_style_context (widget), GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        g_free (css);
+        g_object_unref (provider);
 }
 
 static GObject *
@@ -138,77 +144,7 @@ ev_loading_window_constructor (GType                  type,
 	return object;
 }
 
-static void
-_cairo_rounded_rectangle (cairo_t *cr,
-			  gint     width,
-			  gint     height,
-			  gdouble  radius)
-{
-	cairo_move_to (cr, radius, 0);
-	cairo_line_to (cr, width - radius, 0);
-	cairo_curve_to (cr,
-			width, 0,
-			width, 0,
-			width,
-			radius);
-	cairo_line_to (cr, width, height - radius);
-	cairo_curve_to (cr,
-			width,height,
-			width, height,
-			width - radius,
-			height);
-	cairo_line_to (cr, radius, height);
-	cairo_curve_to (cr,
-			0, height,
-			0, height,
-			0, height - radius);
-	cairo_line_to (cr, 0, radius);
-	cairo_curve_to (cr,
-			0, 0,
-			0, 0,
-			radius, 0);
-}
 
-static void
-ev_loading_window_size_allocate (GtkWidget      *widget,
-				 GtkAllocation  *allocation)
-{
-	EvLoadingWindow *window = EV_LOADING_WINDOW (widget);
-	cairo_surface_t *surface;
-	cairo_region_t *shape;
-	cairo_t         *cr;
-	double           r;
-
-	GTK_WIDGET_CLASS (ev_loading_window_parent_class)->size_allocate (widget, allocation);
-
-	if (allocation->width == window->width && allocation->height == window->height)
-		return;
-
-	window->width = allocation->width;
-	window->height = allocation->height;
-
-	surface = cairo_image_surface_create (CAIRO_FORMAT_A8, window->width, window->height);
-	cr = cairo_create (surface);
-
-	cairo_save (cr);
-	cairo_rectangle (cr, 0, 0, window->width, window->height);
-	cairo_set_operator (cr, CAIRO_OPERATOR_CLEAR);
-	cairo_fill (cr);
-	cairo_restore (cr);
-
-	cairo_set_source_rgb (cr, 1., 1., 1.);
-	r = MIN (window->width, window->height) / 2.;
-	_cairo_rounded_rectangle (cr, window->width, window->height, r);
-	cairo_fill (cr);
-
-	cairo_destroy (cr);
-
-	shape = gdk_cairo_region_create_from_surface (surface);
-	cairo_surface_destroy (surface);
-
-	gtk_widget_shape_combine_region (widget, shape);
-	cairo_region_destroy (shape);
-}
 
 static void
 ev_loading_window_hide (GtkWidget *widget)
@@ -241,7 +177,7 @@ ev_loading_window_class_init (EvLoadingWindowClass *klass)
 	g_object_class->constructor = ev_loading_window_constructor;
 	g_object_class->set_property = ev_loading_window_set_property;
 
-	gtk_widget_class->size_allocate = ev_loading_window_size_allocate;
+	
 	gtk_widget_class->show = ev_loading_window_show;
 	gtk_widget_class->hide = ev_loading_window_hide;
 
@@ -264,7 +200,7 @@ ev_loading_window_new (GtkWindow *parent)
 	g_return_val_if_fail (GTK_IS_WINDOW (parent), NULL);
 
 	window = g_object_new (EV_TYPE_LOADING_WINDOW,
-                               "type", GTK_WINDOW_POPUP,
+                               
 			       "parent", parent,
 			       NULL);
 	return window;
@@ -289,5 +225,5 @@ ev_loading_window_move (EvLoadingWindow *window,
 
 	window->x = x;
 	window->y = y;
-	gtk_window_move (GTK_WINDOW (window), x, y);
+	/* gtk_window_move is removed in GTK4. Positioning handled by WM or overlay */
 }

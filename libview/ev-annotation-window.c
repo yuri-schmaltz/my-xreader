@@ -49,8 +49,6 @@ struct _EvAnnotationWindow {
 	GtkWidget    *title;
 	GtkWidget    *close_button;
 	GtkWidget    *text_view;
-	GtkWidget    *resize_se;
-	GtkWidget    *resize_sw;
 
 	gboolean      is_open;
 	EvRectangle   rect;
@@ -76,22 +74,6 @@ static guint signals[N_SIGNALS] = { 0 };
 G_DEFINE_TYPE (EvAnnotationWindow, ev_annotation_window, GTK_TYPE_WINDOW)
 
 /* Cut and paste from gtkwindow.c */
-static void
-send_focus_change (GtkWidget *widget,
-		   gboolean   in)
-{
-	GdkEvent *fevent = gdk_event_new (GDK_FOCUS_CHANGE);
-
-	fevent->focus_change.type = GDK_FOCUS_CHANGE;
-	fevent->focus_change.window = gtk_widget_get_window (widget);
-	fevent->focus_change.in = in;
-	if (fevent->focus_change.window)
-		g_object_ref (fevent->focus_change.window);
-
-	gtk_widget_send_focus_change (widget, fevent);
-
-	gdk_event_free (fevent);
-}
 
 static gdouble
 get_screen_dpi (EvAnnotationWindow *window)
@@ -118,24 +100,17 @@ static void
 ev_annotation_window_set_color (EvAnnotationWindow *window,
 				GdkRGBA           *color)
 {
-        GtkStyleProperties *properties;
-        GtkStyleProvider   *provider;
-
-        properties = gtk_style_properties_new ();
-        gtk_style_properties_set (properties, 0,
-                                  "background-color", color,
-                                  NULL);
-
-        provider = GTK_STYLE_PROVIDER (properties);
-        gtk_style_context_add_provider (gtk_widget_get_style_context (GTK_WIDGET (window)),
-                                        provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        gtk_style_context_add_provider (gtk_widget_get_style_context (window->close_button),
-                                        provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        gtk_style_context_add_provider (gtk_widget_get_style_context (window->resize_se),
-                                        provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        gtk_style_context_add_provider (gtk_widget_get_style_context (window->resize_sw),
-                                        provider, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        g_object_unref (properties);
+	gchar *css = g_strdup_printf ("* { background-color: rgba(%d,%d,%d,%f); }",
+                                      (int)(color->red * 255),
+                                      (int)(color->green * 255),
+                                      (int)(color->blue * 255),
+                                      color->alpha);
+	GtkCssProvider *provider = gtk_css_provider_new ();
+	gtk_css_provider_load_from_string (provider, css);
+	gtk_style_context_add_provider (gtk_widget_get_style_context (GTK_WIDGET (window)), GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	gtk_style_context_add_provider (gtk_widget_get_style_context (window->close_button), GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	g_free (css);
+	g_object_unref (provider);
 }
 
 static void
@@ -195,47 +170,7 @@ ev_annotation_window_set_property (GObject      *object,
 	}
 }
 
-static gboolean
-ev_annotation_window_resize (EvAnnotationWindow *window,
-			     GdkEventButton     *event,
-			     GtkWidget          *ebox)
-{
-	if (event->type == GDK_BUTTON_PRESS && event->button == 1) {
-		gtk_window_begin_resize_drag (GTK_WINDOW (window),
-					      window->resize_sw == ebox ?
-					      GDK_WINDOW_EDGE_SOUTH_WEST :
-					      GDK_WINDOW_EDGE_SOUTH_EAST,
-					      event->button, event->x_root,
-					      event->y_root, event->time);
-		return TRUE;
-	}
 
-	return FALSE;
-}
-
-static void
-ev_annotation_window_set_resize_cursor (GtkWidget          *widget,
-					EvAnnotationWindow *window)
-{
-	GdkWindow *gdk_window = gtk_widget_get_window (widget);
-
-	if (!gdk_window)
-		return;
-
-	if (gtk_widget_is_sensitive (widget)) {
-		GdkDisplay *display = gtk_widget_get_display (widget);
-		GdkCursor  *cursor;
-
-		cursor = gdk_cursor_new_for_display (display,
-						     widget == window->resize_sw ?
-						     GDK_BOTTOM_LEFT_CORNER :
-						     GDK_BOTTOM_RIGHT_CORNER);
-		gdk_window_set_cursor (gdk_window, cursor);
-		g_object_unref (cursor);
-	} else {
-		gdk_window_set_cursor (gdk_window, NULL);
-	}
-}
 
 static void
 text_view_state_flags_changed (GtkWidget     *widget,
@@ -260,12 +195,8 @@ ev_annotation_window_init (EvAnnotationWindow *window)
 	GtkWidget *vbox, *hbox;
 	GtkWidget *icon;
 	GtkWidget *swindow;
-	GtkIconTheme *icon_theme;
-	GdkPixbuf *pixbuf;
 
-	icon_theme = gtk_icon_theme_get_default ();
-
-	gtk_widget_set_can_focus (GTK_WIDGET (window), TRUE);
+	gtk_widget_set_focusable (GTK_WIDGET (window), TRUE);
 
 	vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 
@@ -273,97 +204,42 @@ ev_annotation_window_init (EvAnnotationWindow *window)
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 
 	icon = gtk_image_new (); /* FIXME: use the annot icon */
-	gtk_box_pack_start (GTK_BOX (hbox), icon, FALSE, FALSE, 0);
-	gtk_widget_show (icon);
+	gtk_box_append (GTK_BOX (hbox), icon);
 
 	window->title = gtk_label_new (NULL);
-	gtk_box_pack_start (GTK_BOX (hbox), window->title, TRUE, TRUE, 0);
-	gtk_widget_show (window->title);
+	gtk_widget_set_hexpand (window->title, TRUE);
+	gtk_box_append (GTK_BOX (hbox), window->title);
 
 	window->close_button = gtk_button_new ();
-	gtk_button_set_relief (GTK_BUTTON (window->close_button), GTK_RELIEF_NONE);
-	gtk_container_set_border_width (GTK_CONTAINER (window->close_button), 0);
+	gtk_button_set_has_frame (GTK_BUTTON (window->close_button), FALSE);
 	g_signal_connect_swapped (window->close_button, "clicked",
 				  G_CALLBACK (ev_annotation_window_close),
 				  window);
-	pixbuf = gtk_icon_theme_load_icon (icon_theme, EV_STOCK_CLOSE, 8, GTK_ICON_LOOKUP_FORCE_SIZE, NULL);
-	icon = gtk_image_new_from_pixbuf (pixbuf);
-	g_object_unref (pixbuf);
-	gtk_container_add (GTK_CONTAINER (window->close_button), icon);
-	gtk_widget_show (icon);
+	icon = gtk_image_new_from_icon_name ("window-close-symbolic");
+	gtk_button_set_child (GTK_BUTTON (window->close_button), icon);
 
-	gtk_box_pack_start (GTK_BOX (hbox), window->close_button, FALSE, FALSE, 0);
-	gtk_widget_show (window->close_button);
+	gtk_box_append (GTK_BOX (hbox), window->close_button);
 
-	gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 0);
-	gtk_widget_show (hbox);
+	gtk_box_append (GTK_BOX (vbox), hbox);
 
 	/* Contents */
-	swindow = gtk_scrolled_window_new (NULL, NULL);
+	swindow = gtk_scrolled_window_new ();
 	window->text_view = gtk_text_view_new ();
-	gtk_text_view_set_wrap_mode (GTK_TEXT_VIEW (window->text_view), GTK_WRAP_WORD);
+	gtk_text_view_set_wrap_mode (GTK_TEXT_VIEW (window->text_view), GTK_WRAP_WORD_CHAR);
 	g_signal_connect (window->text_view, "state-flags-changed",
 			  G_CALLBACK (text_view_state_flags_changed),
 			  window);
-	gtk_container_add (GTK_CONTAINER (swindow), window->text_view);
-	gtk_widget_show (window->text_view);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (swindow), window->text_view);
+        gtk_widget_set_vexpand(swindow, TRUE);
+	gtk_box_append (GTK_BOX (vbox), swindow);
 
-	gtk_box_pack_start (GTK_BOX (vbox), swindow, TRUE, TRUE, 0);
-	gtk_widget_show (swindow);
-
-	/* Resize bar */
-	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-
-	window->resize_sw = gtk_event_box_new ();
-	gtk_widget_add_events (window->resize_sw, GDK_BUTTON_PRESS_MASK);
-	g_signal_connect_swapped (window->resize_sw, "button-press-event",
-				  G_CALLBACK (ev_annotation_window_resize),
-				  window);
-	g_signal_connect (window->resize_sw, "realize",
-			  G_CALLBACK (ev_annotation_window_set_resize_cursor),
-			  window);
-
-	pixbuf = gtk_icon_theme_load_icon (icon_theme, EV_STOCK_RESIZE_SW, 8, GTK_ICON_LOOKUP_FORCE_SIZE, NULL);
-	icon = gtk_image_new_from_pixbuf (pixbuf);
-	g_object_unref (pixbuf);
-	gtk_container_add (GTK_CONTAINER (window->resize_sw), icon);
-	gtk_widget_show (icon);
-	gtk_box_pack_start (GTK_BOX (hbox), window->resize_sw, FALSE, FALSE, 0);
-	gtk_widget_show (window->resize_sw);
-
-	window->resize_se = gtk_event_box_new ();
-	gtk_widget_add_events (window->resize_se, GDK_BUTTON_PRESS_MASK);
-	g_signal_connect_swapped (window->resize_se, "button-press-event",
-				  G_CALLBACK (ev_annotation_window_resize),
-				  window);
-	g_signal_connect (window->resize_se, "realize",
-			  G_CALLBACK (ev_annotation_window_set_resize_cursor),
-			  window);
-
-	pixbuf = gtk_icon_theme_load_icon (icon_theme, EV_STOCK_RESIZE_SE, 8, GTK_ICON_LOOKUP_FORCE_SIZE, NULL);
-	icon = gtk_image_new_from_pixbuf (pixbuf);
-	g_object_unref (pixbuf);
-	gtk_container_add (GTK_CONTAINER (window->resize_se), icon);
-	gtk_widget_show (icon);
-	gtk_box_pack_end (GTK_BOX (hbox), window->resize_se, FALSE, FALSE, 0);
-	gtk_widget_show (window->resize_se);
-
-	gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 0);
-	gtk_widget_show (hbox);
-
-	gtk_container_add (GTK_CONTAINER (window), vbox);
-	gtk_widget_show (vbox);
-
-	gtk_widget_add_events (GTK_WIDGET (window),
-			       GDK_BUTTON_PRESS_MASK |
-			       GDK_KEY_PRESS_MASK);
-
-	gtk_container_set_border_width (GTK_CONTAINER (window), 2);
+	gtk_window_set_child (GTK_WINDOW (window), vbox);
 
 	gtk_window_set_decorated (GTK_WINDOW (window), FALSE);
-	gtk_window_set_skip_taskbar_hint (GTK_WINDOW (window), TRUE);
-	gtk_window_set_skip_pager_hint (GTK_WINDOW (window), TRUE);
 	gtk_window_set_resizable (GTK_WINDOW (window), TRUE);
+
+        /* Connect close request signal */
+        g_signal_connect(window, "close-request", G_CALLBACK(ev_annotation_window_close), window);
 }
 
 static GObject *
@@ -400,7 +276,7 @@ ev_annotation_window_constructor (GType                  type,
 
 	/* Rectangle is at doc resolution (72.0) */
 	scale = get_screen_dpi (window) / 72.0;
-	gtk_window_resize (GTK_WINDOW (window),
+	gtk_window_set_default_size (GTK_WINDOW (window),
 			   (gint)((rect->x2 - rect->x1) * scale),
 			   (gint)((rect->y2 - rect->y1) * scale));
 
@@ -433,116 +309,23 @@ ev_annotation_window_constructor (GType                  type,
 	return object;
 }
 
-static gboolean
-ev_annotation_window_key_press_event (GtkWidget   *widget,
-                                      GdkEventKey *event)
-{
-	EvAnnotationWindow *window = EV_ANNOTATION_WINDOW (widget);
-
-	switch (event->keyval) {
-		case GDK_KEY_Escape:
-			ev_annotation_window_close(window);
-			return TRUE;
-	}
-
-	/* handle other key events of the focused widget */
-	return gtk_window_propagate_key_event (GTK_WINDOW (window), event);
-}
 
 
-static gboolean
-ev_annotation_window_button_press_event (GtkWidget      *widget,
-					 GdkEventButton *event)
-{
-	EvAnnotationWindow *window = EV_ANNOTATION_WINDOW (widget);
 
-	if (event->type == GDK_BUTTON_PRESS && event->button == 1) {
-		window->in_move = TRUE;
-		window->x = event->x_root - event->x;
-		window->y = event->y_root - event->y;
-		gtk_window_begin_move_drag (GTK_WINDOW (widget),
-					    event->button,
-					    event->x_root,
-					    event->y_root,
-					    event->time);
-		return TRUE;
-	}
 
-	return FALSE;
-}
 
-static gboolean
-ev_annotation_window_configure_event (GtkWidget         *widget,
-				      GdkEventConfigure *event)
-{
-	EvAnnotationWindow *window = EV_ANNOTATION_WINDOW (widget);
 
-	if (window->in_move &&
-	    (window->x != event->x || window->y != event->y)) {
-		window->x = event->x;
-		window->y = event->y;
-	}
-
-	return GTK_WIDGET_CLASS (ev_annotation_window_parent_class)->configure_event (widget, event);
-}
-
-static gboolean
-ev_annotation_window_hide_on_delete (GtkWidget *widget, GdkEventAny *event) {
-
-	EvAnnotationWindow *window = EV_ANNOTATION_WINDOW (widget);
-	ev_annotation_window_close(window);
-	return TRUE;
-}
-
-static gboolean
-ev_annotation_window_focus_in_event (GtkWidget     *widget,
-				     GdkEventFocus *event)
-{
-	EvAnnotationWindow *window = EV_ANNOTATION_WINDOW (widget);
-
-	if (window->in_move) {
-		if (window->orig_x != window->x || window->orig_y != window->y) {
-			window->orig_x = window->x;
-			window->orig_y = window->y;
-			g_signal_emit (window, signals[MOVED], 0, window->x, window->y);
-		}
-		window->in_move = FALSE;
-	}
-
-    gtk_widget_grab_focus (window->text_view);
-    send_focus_change (window->text_view, TRUE);
-    gtk_text_view_set_cursor_visible (GTK_TEXT_VIEW (window->text_view), TRUE);
-
-	return FALSE;
-}
-
-static gboolean
-ev_annotation_window_focus_out_event (GtkWidget     *widget,
-				      GdkEventFocus *event)
-{
-	EvAnnotationWindow *window = EV_ANNOTATION_WINDOW (widget);
-
-	ev_annotation_window_sync_contents (window);
-
-	return FALSE;
-}
 
 static void
 ev_annotation_window_class_init (EvAnnotationWindowClass *klass)
 {
 	GObjectClass   *g_object_class = G_OBJECT_CLASS (klass);
-	GtkWidgetClass *gtk_widget_class = GTK_WIDGET_CLASS (klass);
+	// GtkWidgetClass *gtk_widget_class = GTK_WIDGET_CLASS (klass);
 
 	g_object_class->constructor = ev_annotation_window_constructor;
 	g_object_class->set_property = ev_annotation_window_set_property;
 	g_object_class->dispose = ev_annotation_window_dispose;
 
-	gtk_widget_class->button_press_event = ev_annotation_window_button_press_event;
-	gtk_widget_class->key_press_event = ev_annotation_window_key_press_event;
-	gtk_widget_class->configure_event = ev_annotation_window_configure_event;
-	gtk_widget_class->focus_in_event = ev_annotation_window_focus_in_event;
-	gtk_widget_class->focus_out_event = ev_annotation_window_focus_out_event;
-	gtk_widget_class->delete_event = ev_annotation_window_hide_on_delete;
 
 	g_object_class_install_property (g_object_class,
 					 PROP_ANNOTATION,
@@ -655,7 +438,7 @@ ev_annotation_window_grab_focus (EvAnnotationWindow *window)
 
 	if (!gtk_widget_has_focus (window->text_view)) {
 		gtk_widget_grab_focus (GTK_WIDGET (window));
-		send_focus_change (window->text_view, TRUE);
+		gtk_widget_grab_focus (window->text_view);
 	}
 }
 
@@ -665,7 +448,7 @@ ev_annotation_window_ungrab_focus (EvAnnotationWindow *window)
 	g_return_if_fail (EV_IS_ANNOTATION_WINDOW (window));
 
 	if (gtk_widget_has_focus (window->text_view)) {
-		send_focus_change (window->text_view, FALSE);
+		// send_focus_change was removed in GTK4 migration
 	}
 
 	ev_annotation_window_sync_contents (window);

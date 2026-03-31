@@ -25,7 +25,7 @@
 #include <gtk/gtk.h>
 #include <stdlib.h>
 
-#include <webkit2/webkit2.h>
+#include <webkit/webkit.h>
 
 #include "ev-web-view.h"
 #include "ev-document-model.h"

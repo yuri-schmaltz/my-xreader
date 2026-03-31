@@ -265,15 +265,16 @@ create_loading_model (void)
 }
 
 static void
-print_section_cb (GtkWidget *menuitem, EvSidebarLinks *sidebar)
+print_section_cb (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
 	GtkWidget *window;
 	GtkTreeSelection *selection;
 	GtkTreeModel *model;
 	GtkTreeIter iter;
 
-	selection = gtk_tree_view_get_selection
-		(GTK_TREE_VIEW (sidebar->priv->tree_view));
+	EvSidebarLinks *sidebar = EV_SIDEBAR_LINKS (user_data);
+
+	selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (sidebar->priv->tree_view));
 
 	if (gtk_tree_selection_get_selected (selection, &model, &iter)) {
 		EvLink *link;
@@ -314,67 +315,25 @@ print_section_cb (GtkWidget *menuitem, EvSidebarLinks *sidebar)
 		if (last_page == -1)
 			last_page = ev_document_get_n_pages (sidebar->priv->document);
 
-		window = gtk_widget_get_toplevel (GTK_WIDGET (sidebar));
+		window = GTK_WIDGET(gtk_widget_get_native (GTK_WIDGET (user_data)));
 		if (EV_IS_WINDOW (window)) {
 			ev_window_print_range (EV_WINDOW (window), first_page, last_page);
 		}
 	}
 }
 
-static GtkMenu *
-build_popup_menu (EvSidebarLinks *sidebar)
-{
-	GtkWidget *menu;
-	GtkWidget *item;
-
-	menu = gtk_menu_new ();
-	item = gtk_image_menu_item_new_from_stock (GTK_STOCK_PRINT, NULL);
-	gtk_label_set_label (GTK_LABEL (gtk_bin_get_child (GTK_BIN (item))), _("Print…"));
-	gtk_widget_show (item);
-	gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
-	g_signal_connect (item, "activate",
-			  G_CALLBACK (print_section_cb), sidebar);
-
-	return GTK_MENU (menu);
-}
 
 static void
 popup_menu_cb (GtkWidget *treeview, EvSidebarLinks *sidebar)
 {
-	GtkMenu *menu = build_popup_menu (sidebar);
-
-	gtk_menu_popup (menu, NULL, NULL,
-			ev_gui_menu_position_tree_selection,
-			sidebar->priv->tree_view, 0,
-			gtk_get_current_event_time ());
-	gtk_menu_shell_select_first (GTK_MENU_SHELL (menu), FALSE);
+	/* GTK4 GtkPopoverMenu */
 }
 
-static gboolean
-button_press_cb (GtkWidget *treeview,
-                 GdkEventButton *event,
-                 EvSidebarLinks *sidebar)
+static void
+button_press_cb (GtkGestureClick *gesture, int n_press, double x, double y, EvSidebarLinks *sidebar)
 {
-	GtkTreePath *path = NULL;
-
-	if (event->button == 3) {
-	        if (gtk_tree_view_get_path_at_pos (GTK_TREE_VIEW (treeview),
-        	                                   event->x,
-                	                           event->y,
-	                                           &path,
-        	                                   NULL, NULL, NULL)) {
-			gtk_tree_view_set_cursor (GTK_TREE_VIEW (treeview),
-						  path, NULL, FALSE);
-			gtk_menu_popup (build_popup_menu (sidebar), NULL,
-					NULL, NULL, NULL, event->button,
-					gtk_get_current_event_time ());
-			gtk_tree_path_free (path);
-
-			return TRUE;
-		}
-	}
-
-	return FALSE;
+        /* GTK4 conversion: popover menu logic goes here */
+        return;
 }
 
 
@@ -390,7 +349,7 @@ ev_sidebar_links_construct (EvSidebarLinks *ev_sidebar_links)
 
 	priv = ev_sidebar_links->priv;
 
-	swindow = gtk_scrolled_window_new (NULL, NULL);
+	swindow = gtk_scrolled_window_new ();
 
 	/* Create tree view */
 	loading_model = create_loading_model ();
@@ -400,10 +359,10 @@ ev_sidebar_links_construct (EvSidebarLinks *ev_sidebar_links)
 	selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (priv->tree_view));
 	gtk_tree_selection_set_mode (selection, GTK_SELECTION_NONE);
 	gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (priv->tree_view), FALSE);
-	gtk_container_add (GTK_CONTAINER (swindow), priv->tree_view);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (swindow), priv->tree_view);
 
-	gtk_box_pack_start (GTK_BOX (ev_sidebar_links), swindow, TRUE, TRUE, 0);
-	gtk_widget_show_all (GTK_WIDGET (ev_sidebar_links));
+	gtk_box_append (GTK_BOX (ev_sidebar_links), swindow);
+	gtk_widget_show(GTK_WIDGET(ev_sidebar_links));
 
 	column = gtk_tree_view_column_new ();
 	gtk_tree_view_column_set_expand (GTK_TREE_VIEW_COLUMN (column), TRUE);
@@ -434,10 +393,10 @@ ev_sidebar_links_construct (EvSidebarLinks *ev_sidebar_links)
 					     "text", EV_DOCUMENT_LINKS_COLUMN_PAGE_LABEL,
 					     NULL);
 
-	g_signal_connect (priv->tree_view,
-			  "button_press_event",
-			  G_CALLBACK (button_press_cb),
-			  ev_sidebar_links);
+        GtkGesture *gesture = gtk_gesture_click_new ();
+        gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), GDK_BUTTON_SECONDARY);
+        g_signal_connect (gesture, "pressed", G_CALLBACK (button_press_cb), ev_sidebar_links);
+        gtk_widget_add_controller (priv->tree_view, GTK_EVENT_CONTROLLER (gesture));
 	g_signal_connect (priv->tree_view,
 			  "popup_menu",
 			  G_CALLBACK (popup_menu_cb),

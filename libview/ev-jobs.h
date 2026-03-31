@@ -243,8 +243,8 @@ struct _EvJobRender
 	cairo_region_t *selection_region;
 	EvRectangle selection_points;
 	EvSelectionStyle selection_style;
-	GdkColor base;
-	GdkColor text;
+	GdkRGBA base;
+	GdkRGBA text;
 };
 
 struct _EvJobRenderClass
@@ -445,8 +445,8 @@ EvJob          *ev_job_render_new         (EvDocument      *document,
 void     ev_job_render_set_selection_info (EvJobRender     *job,
 					   EvRectangle     *selection_points,
 					   EvSelectionStyle selection_style,
-					   GdkColor        *text,
-					   GdkColor        *base);
+					   GdkRGBA         *text,
+					   GdkRGBA         *base);
 /* EvJobPageData */
 GType           ev_job_page_data_get_type (void) G_GNUC_CONST;
 EvJob          *ev_job_page_data_new      (EvDocument      *document,

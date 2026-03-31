@@ -83,6 +83,11 @@ ev_document_misc_get_loading_thumbnail (int      width,
 	return create_thumbnail_frame (width, height, NULL, !inverted_colors);
 }
 
+/* GTK4: Thumbnail frame rendering using GtkSnapshot-compatible approach.
+ * We use cairo to render the frame since we need a GdkPixbuf result,
+ * but we no longer use GtkStyleContext render functions (deprecated path).
+ * Instead we use a simple border rendering approach.
+ */
 static GdkPixbuf *
 ev_document_misc_render_thumbnail_frame (GtkWidget *widget,
                                          int        width,
@@ -90,13 +95,11 @@ ev_document_misc_render_thumbnail_frame (GtkWidget *widget,
                                          gboolean   inverted_colors,
                                          GdkPixbuf *source_pixbuf)
 {
-        GtkStyleContext *context = gtk_widget_get_style_context (widget);
-        GtkStateFlags    state = gtk_widget_get_state_flags (widget);
         int              width_r, height_r;
         int              width_f, height_f;
         cairo_surface_t *surface;
         cairo_t         *cr;
-        GtkBorder        border = {0, };
+        GtkBorder        border = {1, 1, 1, 1};
         GdkPixbuf       *retval;
 
         if (source_pixbuf) {
@@ -109,29 +112,34 @@ ev_document_misc_render_thumbnail_frame (GtkWidget *widget,
                 height_r = height;
         }
 
-        gtk_style_context_save (context);
-
-        gtk_style_context_add_class (context, "page-thumbnail");
-        if (inverted_colors)
-                gtk_style_context_add_class (context, "inverted");
-
-        gtk_style_context_get_border (context, state, &border);
         width_f = width_r + border.left + border.right;
         height_f = height_r + border.top + border.bottom;
 
         surface = cairo_image_surface_create (CAIRO_FORMAT_ARGB32,
                                               width_f, height_f);
         cr = cairo_create (surface);
+
+        /* Draw background */
+        if (inverted_colors)
+                cairo_set_source_rgb (cr, 0.0, 0.0, 0.0);
+        else
+                cairo_set_source_rgb (cr, 1.0, 1.0, 1.0);
+        cairo_rectangle (cr, 0, 0, width_f, height_f);
+        cairo_fill (cr);
+
+        /* Draw source pixbuf if provided */
         if (source_pixbuf) {
                 gdk_cairo_set_source_pixbuf (cr, source_pixbuf, border.left, border.top);
                 cairo_paint (cr);
-        } else {
-                gtk_render_background (context, cr, 0, 0, width_f, height_f);
         }
-        gtk_render_frame (context, cr, 0, 0, width_f, height_f);
-        cairo_destroy (cr);
 
-        gtk_style_context_restore (context);
+        /* Draw border frame */
+        cairo_set_source_rgba (cr, 0.0, 0.0, 0.0, 0.5);
+        cairo_set_line_width (cr, 1.0);
+        cairo_rectangle (cr, 0.5, 0.5, width_f - 1.0, height_f - 1.0);
+        cairo_stroke (cr);
+
+        cairo_destroy (cr);
 
         retval = gdk_pixbuf_get_from_surface (surface, 0, 0, width_f, height_f);
         cairo_surface_destroy (surface);
@@ -185,18 +193,22 @@ ev_document_misc_paint_one_page (cairo_t      *cr,
 				 gboolean      highlight,
 				 gboolean      inverted_colors)
 {
+	GdkRGBA fg, shade_bg;
+
+	/* GTK4: Use widget color from CSS. Default to reasonable colors. */
 	GtkStyleContext *context = gtk_widget_get_style_context (widget);
-	GtkStateFlags state = gtk_widget_get_state_flags (widget);
-    GdkRGBA fg, bg, shade_bg;
 
-    gtk_style_context_save (context);
-    gtk_style_context_get_background_color (context, state, &bg);
-    gtk_style_context_get_color (context, state, &fg);
-    gtk_style_context_get_color (context, state, &shade_bg);
-    gtk_style_context_restore (context);
-    shade_bg.alpha *= 0.5;
+	/* Get colors from style context - GTK4 compatible API */
+	gtk_style_context_get_color (context, &fg);
+	shade_bg = fg;
+	shade_bg.alpha *= 0.5;
 
-	gdk_cairo_set_source_rgba (cr, highlight ? &fg : &shade_bg);
+	if (highlight) {
+		cairo_set_source_rgba (cr, fg.red, fg.green, fg.blue, fg.alpha);
+	} else {
+		cairo_set_source_rgba (cr, shade_bg.red, shade_bg.green, shade_bg.blue, shade_bg.alpha);
+	}
+
 	cairo_rectangle (cr,
 			 area->x,
 			 area->y,
@@ -242,7 +254,7 @@ ev_document_misc_surface_from_pixbuf (GdkPixbuf *pixbuf)
 	gdk_cairo_set_source_pixbuf (cr, pixbuf, 0, 0);
 	cairo_paint (cr);
 	cairo_destroy (cr);
-	
+
 	return surface;
 }
 
@@ -264,7 +276,7 @@ ev_document_misc_pixbuf_from_surface (cairo_surface_t *surface)
 
 	width = cairo_image_surface_get_width (surface);
 	height = cairo_image_surface_get_height (surface);
-	
+
 	surface_format = cairo_image_surface_get_format (surface);
 	has_alpha = (surface_format == CAIRO_FORMAT_ARGB32);
 
@@ -295,7 +307,7 @@ ev_document_misc_pixbuf_from_surface (cairo_surface_t *surface)
 
 		for (x = 0; x < width; x++) {
 			guchar tmp;
-			
+
 #if G_BYTE_ORDER == G_LITTLE_ENDIAN
 			tmp = p[0];
 			p[0] = p[2];
@@ -307,7 +319,7 @@ ev_document_misc_pixbuf_from_surface (cairo_surface_t *surface)
 			p[1] = p[2];
 			p[2] = p[3];
 			p[3] = (has_alpha) ? tmp : 0xff;
-#endif			
+#endif
 			p += pixbuf_n_channels;
 		}
 	}
@@ -329,7 +341,7 @@ ev_document_misc_surface_rotate_and_scale (cairo_surface_t *surface,
 
 	width = cairo_image_surface_get_width (surface);
 	height = cairo_image_surface_get_height (surface);
-	
+
 	if (dest_width == width &&
 	    dest_height == height &&
 	    dest_rotation == 0) {
@@ -418,12 +430,13 @@ ev_document_misc_invert_pixbuf (GdkPixbuf *pixbuf)
 	}
 }
 
+/* GTK4: GdkScreen removed. Use GdkDisplay + GdkMonitor directly. */
 gdouble
-ev_document_misc_get_screen_dpi (GdkScreen *screen, GdkMonitor *monitor)
+ev_document_misc_get_screen_dpi (GdkDisplay *display, GdkMonitor *monitor)
 {
-    gdouble dp, di;
-    int mmX, mmY;
     GdkRectangle monitorRect;
+    int mmX, mmY;
+    gdouble dp, di;
 
     /*diagonal in pixels*/
     gdk_monitor_get_geometry(monitor, &monitorRect);
@@ -453,18 +466,22 @@ gdouble
 ev_document_misc_get_screen_dpi_at_window(GtkWindow *window)
 {
 	GdkDisplay *display;
-	GdkScreen *screen;
 	GdkMonitor *monitor;
-	GdkWindow *gwindow = gtk_widget_get_window(GTK_WIDGET(GTK_WINDOW(window)));
+	GdkSurface *surface;
 
-	if (!window || !gwindow) {
+	if (!window)
 		return DEFAULT_DPI;
-	}
 
-	screen = gtk_window_get_screen (window);
-	display = gdk_screen_get_display (screen);
-	monitor = gdk_display_get_monitor_at_window(display, gwindow);
-	return ev_document_misc_get_screen_dpi (screen, monitor) / gdk_monitor_get_scale_factor (monitor);
+	surface = gtk_native_get_surface (GTK_NATIVE (window));
+	if (!surface)
+		return DEFAULT_DPI;
+
+	display = gtk_widget_get_display (GTK_WIDGET (window));
+	monitor = gdk_display_get_monitor_at_surface (display, surface);
+	if (!monitor)
+		return DEFAULT_DPI;
+
+	return ev_document_misc_get_screen_dpi (display, monitor) / gdk_monitor_get_scale_factor (monitor);
 }
 
 void
@@ -472,14 +489,12 @@ ev_document_misc_get_pointer_position (GtkWidget *widget,
                                        gint      *x,
                                        gint      *y)
 {
-#if GTK_CHECK_VERSION (3, 20, 0)
-		GdkSeat *seat;
-#else
-        GdkDeviceManager *device_manager;
-#endif
-        GdkDevice        *device_pointer;
-        GdkRectangle      allocation;
-
+        /* GTK4: Direct pointer position querying is not recommended.
+         * Event controllers should be used instead. This function
+         * provides a compatibility fallback using GdkSurface.
+         * For accurate tracking, callers should migrate to
+         * GtkEventControllerMotion.
+         */
         if (x)
                 *x = -1;
         if (y)
@@ -488,24 +503,27 @@ ev_document_misc_get_pointer_position (GtkWidget *widget,
         if (!gtk_widget_get_realized (widget))
                 return;
 
-#if GTK_CHECK_VERSION(3, 20, 0)
-        seat = gdk_display_get_default_seat (gtk_widget_get_display (widget));
-        device_pointer = gdk_seat_get_pointer (seat);
-#else
-        device_manager = gdk_display_get_device_manager (gtk_widget_get_display (widget));
-        device_pointer = gdk_device_manager_get_client_pointer (device_manager);
-#endif
-        gdk_window_get_device_position (gtk_widget_get_window (widget),
-                                        device_pointer,
-                                        x, y, NULL);
-
-        if (gtk_widget_get_has_window (widget))
+        GdkSurface *surface = gtk_native_get_surface (gtk_widget_get_native (widget));
+        if (!surface)
                 return;
 
-        gtk_widget_get_allocation (widget, &allocation);
-        if (x)
-                *x -= allocation.x;
-        if (y)
-                *y -= allocation.y;
-}
+        GdkDisplay *display = gtk_widget_get_display (widget);
+        GdkSeat *seat = gdk_display_get_default_seat (display);
+        GdkDevice *pointer = gdk_seat_get_pointer (seat);
 
+        double dx, dy;
+        gdk_surface_get_device_position (surface, pointer, &dx, &dy, NULL);
+
+        /* GTK4: widgets always have their own coordinate space,
+         * no need to adjust for allocation like in GTK3.
+         */
+        graphene_point_t widget_point;
+        if (gtk_widget_compute_point (GTK_WIDGET (gtk_widget_get_native (widget)),
+                                      widget, &GRAPHENE_POINT_INIT (dx, dy),
+                                      &widget_point)) {
+                if (x)
+                        *x = (gint) widget_point.x;
+                if (y)
+                        *y = (gint) widget_point.y;
+        }
+}

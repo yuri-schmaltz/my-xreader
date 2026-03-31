@@ -88,15 +88,15 @@ ev_progress_message_area_init (EvProgressMessageArea *area)
 				 PANGO_ELLIPSIZE_END);
 	gtk_widget_set_halign (area->priv->label, GTK_ALIGN_START);
 	gtk_widget_set_valign (area->priv->label, GTK_ALIGN_CENTER);
-	gtk_box_pack_start (GTK_BOX (vbox), area->priv->label, TRUE, TRUE, 0);
+	gtk_box_append (GTK_BOX (vbox), area->priv->label); gtk_widget_set_vexpand(area->priv->label, TRUE); gtk_widget_set_hexpand(area->priv->label, TRUE);
 	gtk_widget_show (area->priv->label);
 
 	area->priv->progress_bar = gtk_progress_bar_new ();
 	gtk_widget_set_size_request (area->priv->progress_bar, -1, 15);
-	gtk_box_pack_start (GTK_BOX (vbox), area->priv->progress_bar, TRUE, FALSE, 0);
+	gtk_box_append (GTK_BOX (vbox), area->priv->progress_bar); gtk_widget_set_vexpand(area->priv->progress_bar, TRUE);
 	gtk_widget_show (area->priv->progress_bar);
 
-	gtk_box_pack_start (GTK_BOX (contents), vbox, TRUE, TRUE, 0);
+	gtk_box_append (GTK_BOX (contents), vbox); gtk_widget_set_vexpand(vbox, TRUE); gtk_widget_set_hexpand(vbox, TRUE);
 	gtk_widget_show (vbox);
 }
 

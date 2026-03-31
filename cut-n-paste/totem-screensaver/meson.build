@@ -5,8 +5,8 @@ totem_screensaver_sources = [
 
 totem_screensaver_deps = [
     config_h,
-    gtk,
-    X11,
+    glib,
+    gio,
 ]
 
 libtotemscrsaver = static_library(

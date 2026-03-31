@@ -37,7 +37,7 @@ typedef struct _EggFindBarPrivate EggFindBarPrivate;
 
 struct _EggFindBar
 {
-  GtkToolbar parent;
+  GtkBox parent;
 
   /*< private >*/
   EggFindBarPrivate *priv;
@@ -45,7 +45,7 @@ struct _EggFindBar
 
 struct _EggFindBarClass
 {
-  GtkToolbarClass parent_class;
+  GtkBoxClass parent_class;
 
   void (* next)	    (EggFindBar *find_bar);
   void (* previous) (EggFindBar *find_bar);

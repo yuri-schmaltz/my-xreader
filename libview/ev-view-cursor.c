@@ -29,25 +29,25 @@ ev_view_cursor_new (GdkDisplay  *display,
 	case EV_VIEW_CURSOR_NORMAL:
 		break;
 	case EV_VIEW_CURSOR_IBEAM:
-		cursor = gdk_cursor_new_for_display (display, GDK_XTERM);
+		cursor = gdk_cursor_new_from_name ("text", NULL);
 		break;
 	case EV_VIEW_CURSOR_LINK:
-		cursor = gdk_cursor_new_for_display (display, GDK_HAND2);
+		cursor = gdk_cursor_new_from_name ("pointer", NULL);
 		break;
 	case EV_VIEW_CURSOR_WAIT:
-		cursor = gdk_cursor_new_for_display (display, GDK_WATCH);
+		cursor = gdk_cursor_new_from_name ("wait", NULL);
 		break;
 	case EV_VIEW_CURSOR_HIDDEN:
-		cursor = gdk_cursor_new_for_display (display, GDK_BLANK_CURSOR);
+		cursor = gdk_cursor_new_from_name ("none", NULL);
 		break;
 	case EV_VIEW_CURSOR_DRAG:
-		cursor = gdk_cursor_new_for_display (display, GDK_FLEUR);
+		cursor = gdk_cursor_new_from_name ("move", NULL);
 		break;
 	case EV_VIEW_CURSOR_AUTOSCROLL:
-		cursor = gdk_cursor_new_for_display (display, GDK_DOUBLE_ARROW);
+		cursor = gdk_cursor_new_from_name ("n-resize", NULL);
 		break;
 	case EV_VIEW_CURSOR_ADD:
-		cursor = gdk_cursor_new_for_display (display, GDK_PLUS);
+		cursor = gdk_cursor_new_from_name ("crosshair", NULL);
 		break;
 	}
 

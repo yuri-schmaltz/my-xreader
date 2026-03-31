@@ -26,17 +26,8 @@
 
 #include "config.h"
 
-#include <gtk/gtk.h>
-#include <gdk/gdk.h>
-
-#ifdef GDK_WINDOWING_X11
-#include <gdk/gdkx.h>
-#include <X11/keysym.h>
-
-#ifdef HAVE_XTEST
-#include <X11/extensions/XTest.h>
-#endif /* HAVE_XTEST */
-#endif /* GDK_WINDOWING_X11 */
+#include <glib.h>
+#include <gio/gio.h>
 
 #include "totem-scrsaver.h"
 
@@ -45,7 +36,6 @@
 #define GS_INTERFACE "org.gnome.SessionManager"
 
 #define GSM_INHIBITOR_FLAG_IDLE 1 << 3
-#define XSCREENSAVER_MIN_TIMEOUT 60
 
 enum {
 	PROP_0,
@@ -64,17 +54,6 @@ struct TotemScrsaverPrivate {
         gboolean have_screensaver_dbus;
 	guint32 cookie;
 	gboolean old_dbus_api;
-
-	/* To save the screensaver info */
-	int timeout;
-	int interval;
-	int prefer_blanking;
-	int allow_exposures;
-
-	/* For use with XTest */
-	int keycode1, keycode2;
-	int *keycode;
-	gboolean have_xtest;
 };
 
 G_DEFINE_TYPE_WITH_PRIVATE(TotemScrsaver, totem_scrsaver, G_TYPE_OBJECT)
@@ -276,132 +255,6 @@ screensaver_finalize_dbus (TotemScrsaver *scr)
 	}
 }
 
-#ifdef GDK_WINDOWING_X11
-static void
-screensaver_enable_x11 (TotemScrsaver *scr)
-{
-	Display *xdisplay;
-
-#ifdef HAVE_XTEST
-	if (scr->priv->have_xtest != FALSE)
-	{
-		g_source_remove_by_user_data (scr);
-		return;
-	}
-#endif /* HAVE_XTEST */
-
-	xdisplay = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
-	XLockDisplay (xdisplay);
-	XSetScreenSaver (xdisplay,
-			scr->priv->timeout,
-			scr->priv->interval,
-			scr->priv->prefer_blanking,
-			scr->priv->allow_exposures);
-	XUnlockDisplay (xdisplay);
-}
-
-#ifdef HAVE_XTEST
-static gboolean
-fake_event (TotemScrsaver *scr)
-{
-	if (scr->priv->disabled)
-	{
-		Display *display;
-
-		xdisplay = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
-		XLockDisplay (xdisplay);
-		XTestFakeKeyEvent (xdisplay, *scr->priv->keycode,
-				True, CurrentTime);
-		XTestFakeKeyEvent (xdisplay, *scr->priv->keycode,
-				False, CurrentTime);
-		XUnlockDisplay (xdisplay);
-		/* Swap the keycode */
-		if (scr->priv->keycode == &scr->priv->keycode1)
-			scr->priv->keycode = &scr->priv->keycode2;
-		else
-			scr->priv->keycode = &scr->priv->keycode1;
-	}
-
-	return TRUE;
-}
-#endif /* HAVE_XTEST */
-
-static void
-screensaver_disable_x11 (TotemScrsaver *scr)
-{
-	Display *xdisplay;
-
-	xdisplay = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
-
-#ifdef HAVE_XTEST
-	if (scr->priv->have_xtest != FALSE)
-	{
-
-		XLockDisplay (xdisplay);
-		XGetScreenSaver(xdisplay, &scr->priv->timeout,
-				&scr->priv->interval,
-				&scr->priv->prefer_blanking,
-				&scr->priv->allow_exposures);
-		XUnlockDisplay (xdisplay);
-
-		if (scr->priv->timeout != 0) {
-			g_timeout_add_seconds (scr->priv->timeout / 2,
-					       (GSourceFunc) fake_event, scr);
-		} else {
-			g_timeout_add_seconds (XSCREENSAVER_MIN_TIMEOUT / 2,
-					       (GSourceFunc) fake_event, scr);
-		}
-
-		return;
-	}
-#endif /* HAVE_XTEST */
-
-	XLockDisplay (xdisplay);
-	XGetScreenSaver(xdisplay, &scr->priv->timeout,
-			&scr->priv->interval,
-			&scr->priv->prefer_blanking,
-			&scr->priv->allow_exposures);
-	XSetScreenSaver(xdisplay, 0, 0,
-			DontPreferBlanking, DontAllowExposures);
-	XUnlockDisplay (xdisplay);
-}
-
-static void
-screensaver_init_x11 (TotemScrsaver *scr)
-{
-#ifdef HAVE_XTEST
-	Display *display;
-	int a, b, c, d;
-
-	display = GDK_DISPLAY_XDISPLAY (gdk_display_get_default ());
-	XLockDisplay (xdisplay);
-	scr->priv->have_xtest = (XTestQueryExtension (xdisplay, &a, &b, &c, &d) == True);
-	if (scr->priv->have_xtest != FALSE)
-	{
-		scr->priv->keycode1 = XKeysymToKeycode (xdisplay, XK_Alt_L);
-		if (scr->priv->keycode1 == 0) {
-			g_warning ("scr->priv->keycode1 not existant");
-		}
-		scr->priv->keycode2 = XKeysymToKeycode (xdisplay, XK_Alt_R);
-		if (scr->priv->keycode2 == 0) {
-			scr->priv->keycode2 = XKeysymToKeycode (xdisplay, XK_Alt_L);
-			if (scr->priv->keycode2 == 0) {
-				g_warning ("scr->priv->keycode2 not existant");
-			}
-		}
-		scr->priv->keycode = &scr->priv->keycode1;
-	}
-	XUnlockDisplay (xdisplay);
-#endif /* HAVE_XTEST */
-}
-
-static void
-screensaver_finalize_x11 (TotemScrsaver *scr)
-{
-	g_source_remove_by_user_data (scr);
-}
-#endif
-
 static void
 totem_scrsaver_get_property (GObject *object,
 			     guint property_id,
@@ -462,9 +315,8 @@ totem_scrsaver_class_init (TotemScrsaverClass *klass)
  * totem_scrsaver_new:
  *
  * Creates a #TotemScrsaver object.
- * If the MATE screen saver is running, it uses its DBUS interface to
- * inhibit the screensaver; otherwise it falls back to using the X
- * screensaver functionality for this.
+ * Uses D-Bus interface to the GNOME/MATE session manager to
+ * inhibit the screensaver.
  *
  * Returns: a newly created #TotemScrsaver
  */
@@ -480,11 +332,6 @@ totem_scrsaver_init (TotemScrsaver *scr)
 	scr->priv = totem_scrsaver_get_instance_private  (scr);
 
 	screensaver_init_dbus (scr);
-#ifdef GDK_WINDOWING_X11
-	screensaver_init_x11 (scr);
-#else
-#warning Unimplemented
-#endif
 }
 
 void
@@ -499,13 +346,6 @@ totem_scrsaver_disable (TotemScrsaver *scr)
 
 	if (screensaver_is_running_dbus (scr) != FALSE)
 		screensaver_disable_dbus (scr);
-	else 
-#ifdef GDK_WINDOWING_X11
-		screensaver_disable_x11 (scr);
-#else
-#warning Unimplemented
-	{}
-#endif
 }
 
 void
@@ -520,13 +360,6 @@ totem_scrsaver_enable (TotemScrsaver *scr)
 
 	if (screensaver_is_running_dbus (scr) != FALSE)
 		screensaver_enable_dbus (scr);
-	else
-#ifdef GDK_WINDOWING_X11
-		screensaver_enable_x11 (scr);
-#else
-#warning Unimplemented
-	{}
-#endif
 }
 
 void
@@ -551,12 +384,6 @@ totem_scrsaver_finalize (GObject *object)
 	g_free (scr->priv->reason);
 
 	screensaver_finalize_dbus (scr);
-#ifdef GDK_WINDOWING_X11
-	screensaver_finalize_x11 (scr);
-#else
-#warning Unimplemented
-	{}
-#endif
 
         G_OBJECT_CLASS (totem_scrsaver_parent_class)->finalize (object);
 }

@@ -57,10 +57,9 @@ get_license_text_widget (EvDocumentLicense *license)
 	buffer = gtk_text_view_get_buffer (GTK_TEXT_VIEW (textview));
 	gtk_text_buffer_set_text (buffer, ev_document_license_get_text (license), -1);
 
-	swindow = gtk_scrolled_window_new (NULL, NULL);
-	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (swindow),
-					     GTK_SHADOW_IN);
-	gtk_container_add (GTK_CONTAINER (swindow), textview);
+	swindow = gtk_scrolled_window_new ();
+	gtk_scrolled_window_set_has_frame (GTK_SCROLLED_WINDOW (swindow), TRUE);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (swindow), textview);
 	gtk_widget_show (textview);
 
 	return swindow;
@@ -110,16 +109,12 @@ ev_properties_license_add_section (EvPropertiesLicense *properties,
 	markup = g_strdup_printf ("<b>%s</b>", title_text);
 	gtk_label_set_markup (GTK_LABEL (title), markup);
 	g_free (markup);
-	gtk_box_pack_start (GTK_BOX (properties), title, FALSE, FALSE, 0);
+	gtk_box_append (GTK_BOX (properties), title);
 	gtk_widget_show (title);
 
-	alignment = gtk_alignment_new (0.5, 0.5, 1., 1.);
-	gtk_alignment_set_padding (GTK_ALIGNMENT (alignment), 0, 0, 12, 0);
-	gtk_container_add (GTK_CONTAINER (alignment), contents);
+	gtk_widget_set_margin_start (contents, 12);
+	gtk_box_append (GTK_BOX (properties), contents);
 	gtk_widget_show (contents);
-
-	gtk_box_pack_start (GTK_BOX (properties), alignment, FALSE, TRUE, 0);
-	gtk_widget_show (alignment);
 }
 
 void
@@ -154,7 +149,10 @@ ev_properties_license_init (EvPropertiesLicense *properties)
 {
 	gtk_orientable_set_orientation (GTK_ORIENTABLE (properties), GTK_ORIENTATION_VERTICAL);
 	gtk_box_set_spacing (GTK_BOX (properties), 12);
-	gtk_container_set_border_width (GTK_CONTAINER (properties), 12);
+	gtk_widget_set_margin_start (GTK_WIDGET(properties), 12);
+	gtk_widget_set_margin_end (GTK_WIDGET(properties), 12);
+	gtk_widget_set_margin_top (GTK_WIDGET(properties), 12);
+	gtk_widget_set_margin_bottom (GTK_WIDGET(properties), 12);
 }
 
 GtkWidget *

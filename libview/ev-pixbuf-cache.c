@@ -635,21 +635,9 @@ ev_pixbuf_cache_clear_job_sizes (EvPixbufCache *pixbuf_cache,
 }
 
 static void
-get_selection_colors (EvView *view, GdkColor *text, GdkColor *base)
+get_selection_colors (EvView *view, GdkRGBA *text, GdkRGBA *base)
 {
-        GdkRGBA          fg, bg;
-
-        _ev_view_get_selection_colors (view, &bg, &fg);
-
-        text->pixel = 0;
-        text->red = CLAMP ((guint) (fg.red * 65535), 0, 65535);
-        text->green = CLAMP ((guint) (fg.green * 65535), 0, 65535);
-        text->blue = CLAMP ((guint) (fg.blue * 65535), 0, 65535);
-
-        base->pixel = 0;
-        base->red = CLAMP ((guint) (bg.red * 65535), 0, 65535);
-        base->green = CLAMP ((guint) (bg.green * 65535), 0, 65535);
-        base->blue = CLAMP ((guint) (bg.blue * 65535), 0, 65535);
+        _ev_view_get_selection_colors (view, base, text);
 }
 
 static void
@@ -684,7 +672,7 @@ add_job (EvPixbufCache  *pixbuf_cache,
 					   height * job_info->device_scale);
 
 	if (new_selection_surface_needed (pixbuf_cache, job_info, page, scale)) {
-		GdkColor text, base;
+		GdkRGBA text, base;
 
 		get_selection_colors (EV_VIEW (pixbuf_cache->view), &text, &base);
 		ev_job_render_set_selection_info (EV_JOB_RENDER (job_info->job), 
@@ -1011,7 +999,7 @@ ev_pixbuf_cache_get_selection_surface (EvPixbufCache   *pixbuf_cache,
 	 */
 	if (ev_rect_cmp (&(job_info->target_points), &(job_info->selection_points))) {
 		EvRectangle *old_points;
-		GdkColor text, base;
+		GdkRGBA text, base;
 		EvRenderContext *rc;
 		EvPage *ev_page;
 

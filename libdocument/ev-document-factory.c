@@ -331,46 +331,48 @@ file_filter_add_mime_types (EvTypeInfo *info, GtkFileFilter *filter)
 }
 
 /**
- * ev_document_factory_add_filters:
- * @chooser: a #GtkFileChooser
+ * ev_document_factory_get_filters:
  * @document: a #EvDocument, or %NULL
  *
- * Adds some file filters to @chooser.
- 
- * Always add a "All documents" format.
- * 
- * If @document is not %NULL, adds a #GtkFileFilter for @document's MIME type.
+ * Returns a #GListStore of #GtkFileFilter objects suitable for use
+ * with #GtkFileDialog or any other file chooser widget.
  *
- * If @document is %NULL, adds a #GtkFileFilter for each document type that xreader
- * can handle.
+ * Always includes an "All documents" filter.
+ * If @document is not %NULL, includes a filter for @document's MIME type.
+ * If @document is %NULL, includes a filter for each supported document type.
+ * Always includes an "All Files" filter at the end.
+ *
+ * Returns: (transfer full): a new #GListStore of #GtkFileFilter
  */
-void
-ev_document_factory_add_filters (GtkWidget *chooser, EvDocument *document)
+GListStore *
+ev_document_factory_get_filters (EvDocument *document)
 {
 	GList         *all_types;
 	GtkFileFilter *filter;
-	GtkFileFilter *default_filter;
-	GtkFileFilter *document_filter;
+	GListStore    *filters;
 
-        g_return_if_fail (GTK_IS_FILE_CHOOSER (chooser));
-        g_return_if_fail (document == NULL || EV_IS_DOCUMENT (document));
+	g_return_val_if_fail (document == NULL || EV_IS_DOCUMENT (document), NULL);
 
+	filters = g_list_store_new (GTK_TYPE_FILE_FILTER);
 	all_types = ev_backends_manager_get_all_types_info ();
-	
-	default_filter = document_filter = filter = gtk_file_filter_new ();
+
+	/* All Documents filter */
+	filter = gtk_file_filter_new ();
 	gtk_file_filter_set_name (filter, _("All Documents"));
 	g_list_foreach (all_types, (GFunc)file_filter_add_mime_types, filter);
-	gtk_file_chooser_add_filter (GTK_FILE_CHOOSER (chooser), filter);
+	g_list_store_append (filters, filter);
+	g_object_unref (filter);
 
 	if (document) {
 		EvTypeInfo *info;
 
 		info = ev_backends_manager_get_document_type_info (document);
-		default_filter = filter = gtk_file_filter_new ();
+		filter = gtk_file_filter_new ();
 		gtk_file_filter_set_name (filter, info->desc);
 		file_filter_add_mime_types (info, filter);
 		g_free (info);
-		gtk_file_chooser_add_filter (GTK_FILE_CHOOSER (chooser), filter);
+		g_list_store_append (filters, filter);
+		g_object_unref (filter);
 	} else {
 		GList *l;
 
@@ -379,21 +381,62 @@ ev_document_factory_add_filters (GtkWidget *chooser, EvDocument *document)
 
 			info = (EvTypeInfo *)l->data;
 
-			default_filter = filter = gtk_file_filter_new ();
+			filter = gtk_file_filter_new ();
 			gtk_file_filter_set_name (filter, info->desc);
 			file_filter_add_mime_types (info, filter);
-			gtk_file_chooser_add_filter (GTK_FILE_CHOOSER (chooser), filter);
+			g_list_store_append (filters, filter);
+			g_object_unref (filter);
 		}
 	}
 
 	g_list_foreach (all_types, (GFunc)g_free, NULL);
 	g_list_free (all_types);
 
+	/* All Files filter */
 	filter = gtk_file_filter_new ();
 	gtk_file_filter_set_name (filter, _("All Files"));
 	gtk_file_filter_add_pattern (filter, "*");
-	gtk_file_chooser_add_filter (GTK_FILE_CHOOSER (chooser), filter);
+	g_list_store_append (filters, filter);
+	g_object_unref (filter);
 
-	gtk_file_chooser_set_filter (GTK_FILE_CHOOSER (chooser),
-				     document == NULL ? document_filter : default_filter);
+	return filters;
 }
+
+/**
+ * ev_document_factory_add_filters:
+ * @chooser: a #GtkFileChooser
+ * @document: a #EvDocument, or %NULL
+ *
+ * Adds file filters to @chooser. Legacy compatibility wrapper
+ * around ev_document_factory_get_filters().
+ */
+void
+ev_document_factory_add_filters (GtkWidget *chooser, EvDocument *document)
+{
+	GListStore *filters;
+	guint i;
+
+	g_return_if_fail (GTK_IS_FILE_CHOOSER (chooser));
+
+	filters = ev_document_factory_get_filters (document);
+
+	for (i = 0; i < g_list_model_get_n_items (G_LIST_MODEL (filters)); i++) {
+		GtkFileFilter *filter = g_list_model_get_item (G_LIST_MODEL (filters), i);
+		gtk_file_chooser_add_filter (GTK_FILE_CHOOSER (chooser), filter);
+		g_object_unref (filter);
+	}
+
+	/* Set default filter (first or second if document provided) */
+	if (document && g_list_model_get_n_items (G_LIST_MODEL (filters)) > 1) {
+		GtkFileFilter *f = g_list_model_get_item (G_LIST_MODEL (filters), 1);
+		gtk_file_chooser_set_filter (GTK_FILE_CHOOSER (chooser), f);
+		g_object_unref (f);
+	} else {
+		GtkFileFilter *f = g_list_model_get_item (G_LIST_MODEL (filters), 0);
+		gtk_file_chooser_set_filter (GTK_FILE_CHOOSER (chooser), f);
+		g_object_unref (f);
+	}
+
+	g_object_unref (filters);
+}
+

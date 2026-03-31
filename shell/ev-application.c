@@ -30,12 +30,8 @@
 #include <glib/gi18n.h>
 #include <glib/gstdio.h>
 #include <gtk/gtk.h>
-#include <gdk/gdkx.h>
-#include <libxapp/xapp-dark-mode-manager.h>
 
 #include "totem-scrsaver.h"
-
-#include "eggsmclient.h"
 
 #include "ev-application.h"
 #include "ev-file-helpers.h"
@@ -60,9 +56,6 @@ struct _EvApplication {
 #endif
 
 	TotemScrsaver         *scr_saver;
-	EggSMClient           *smclient;
-
-    XAppDarkModeManager *dark_mode_manager;
 };
 
 struct _EvApplicationClass {
@@ -82,7 +75,7 @@ G_DEFINE_TYPE (EvApplication, ev_application, GTK_TYPE_APPLICATION)
 
 static void _ev_application_open_uri_at_dest (EvApplication   *application,
                                               const gchar     *uri,
-                                              GdkScreen       *screen,
+                                              GdkDisplay      *display,
                                               EvLinkDest      *dest,
                                               EvWindowRunMode  mode,
                                               const gchar     *search_string,
@@ -90,7 +83,7 @@ static void _ev_application_open_uri_at_dest (EvApplication   *application,
 static void ev_application_open_uri_in_window (EvApplication  *application,
                                                const char     *uri,
                                                EvWindow       *ev_window,
-                                               GdkScreen      *screen,
+                                               GdkDisplay     *display,
                                                EvLinkDest     *dest,
                                                EvWindowRunMode mode,
                                                const gchar    *search_string,
@@ -118,65 +111,16 @@ ev_application_new (void)
 gboolean
 ev_application_load_session (EvApplication *application)
 {
-    GKeyFile *state_file;
-    gchar    *uri;
-
-#ifdef WITH_SMCLIENT
-    if (egg_sm_client_is_resumed (application->smclient)) {
-        state_file = egg_sm_client_get_state_file (application->smclient);
-        if (!state_file)
-            return FALSE;
-    } else
-#endif /* WITH_SMCLIENT */
-        return FALSE;
-
-    uri = g_key_file_get_string (state_file, "Xreader", "uri", NULL);
-    if (!uri)
-        return FALSE;
-
-    ev_application_open_uri_at_dest (application, uri,
-                                     gdk_screen_get_default (),
-                                     NULL, 0, NULL,
-                                     GDK_CURRENT_TIME);
-    g_free (uri);
-    g_key_file_free (state_file);
-
-    return TRUE;
+    /* GTK4: Session management is handled by GtkApplication.
+     * The old EggSMClient X11-based session saving is removed.
+     */
+    return FALSE;
 }
-
-#ifdef WITH_SMCLIENT
-
-static void
-smclient_save_state_cb (EggSMClient   *client,
-                        GKeyFile      *state_file,
-                        EvApplication *application)
-{
-    if (!application->uri)
-        return;
-
-    g_key_file_set_string (state_file, "Xreader", "uri", application->uri);
-}
-
-static void
-smclient_quit_cb (EggSMClient   *client,
-                  GApplication *application)
-{
-    g_application_quit (application);
-}
-#endif /* WITH_SMCLIENT */
 
 static void
 ev_application_init_session (EvApplication *application)
 {
-#ifdef WITH_SMCLIENT
-    application->smclient = egg_sm_client_get ();
-    g_signal_connect (application->smclient, "save_state",
-                      G_CALLBACK (smclient_save_state_cb),
-                      application);
-    g_signal_connect (application->smclient, "quit",
-                      G_CALLBACK (smclient_quit_cb),
-                      application);
-#endif /* WITH_SMCLIENT */
+    /* GTK4: No-op. Session management handled by GtkApplication. */
 }
 
 #ifdef ENABLE_DBUS
@@ -215,7 +159,7 @@ ev_display_open_if_needed (const gchar *name)
 
 static void
 ev_spawn (const char     *uri,
-          GdkScreen      *screen,
+          GdkDisplay     *display,
           EvLinkDest     *dest,
           EvWindowRunMode mode,
           const gchar    *search_string,
@@ -276,8 +220,9 @@ ev_spawn (const char     *uri,
         GList uri_list;
         GList *uris = NULL;
 
-        ctx = gdk_display_get_app_launch_context (gdk_screen_get_display (screen));
-        gdk_app_launch_context_set_screen (ctx, screen);
+        if (!display)
+            display = gdk_display_get_default ();
+        ctx = gdk_display_get_app_launch_context (display);
         gdk_app_launch_context_set_timestamp (ctx, timestamp);
 
         if (uri) {
@@ -301,7 +246,7 @@ ev_spawn (const char     *uri,
 
 static EvWindow *
 ev_application_get_empty_window (EvApplication *application,
-                                 GdkScreen     *screen)
+                                 GdkDisplay    *display)
 {
     EvWindow *empty_window = NULL;
 	GList    *windows;
@@ -317,7 +262,7 @@ ev_application_get_empty_window (EvApplication *application,
         window = EV_WINDOW (l->data);
 
         if (ev_window_is_empty (window) &&
-            gtk_window_get_screen (GTK_WINDOW (window)) == screen) {
+            gtk_widget_get_display (GTK_WIDGET (window)) == display) {
             empty_window = window;
             break;
         }
@@ -330,7 +275,7 @@ ev_application_get_empty_window (EvApplication *application,
 #ifdef ENABLE_DBUS
 typedef struct {
     gchar          *uri;
-    GdkScreen      *screen;
+    GdkDisplay     *display;
     EvLinkDest     *dest;
     EvWindowRunMode mode;
     gchar          *search_string;
@@ -373,7 +318,6 @@ on_reload_cb (GObject      *source_object,
 
     /* We did not open a window, so manually clear the startup
      * notification. */
-    gdk_notify_startup_complete ();
 }
 
 static void
@@ -398,7 +342,7 @@ on_register_uri_cb (GObject      *source_object,
 
         _ev_application_open_uri_at_dest (application,
                                           data->uri,
-                                          data->screen,
+                                          data->display,
                                           data->dest,
                                           data->mode,
                                           data->search_string,
@@ -420,7 +364,7 @@ on_register_uri_cb (GObject      *source_object,
 
         _ev_application_open_uri_at_dest (application,
                                           data->uri,
-                                          data->screen,
+                                          data->display,
                                           data->dest,
                                           data->mode,
                                           data->search_string,
@@ -435,10 +379,7 @@ on_register_uri_cb (GObject      *source_object,
     g_variant_builder_open (&builder, G_VARIANT_TYPE ("a{sv}"));
     g_variant_builder_add (&builder, "{sv}",
                            "display",
-                           g_variant_new_string (gdk_display_get_name (gdk_screen_get_display (data->screen))));
-    g_variant_builder_add (&builder, "{sv}",
-                           "screen",
-                           g_variant_new_int32 (gdk_screen_get_number (data->screen)));
+                           g_variant_new_string (gdk_display_get_name (data->display)));
     if (data->dest) {
         switch (ev_link_dest_get_dest_type (data->dest)) {
             case EV_LINK_DEST_TYPE_PAGE_LABEL:
@@ -504,7 +445,7 @@ on_register_uri_cb (GObject      *source_object,
 static void
 ev_application_register_uri (EvApplication  *application,
                              const gchar    *uri,
-                             GdkScreen      *screen,
+                             GdkDisplay     *display,
                              EvLinkDest     *dest,
                              EvWindowRunMode mode,
                              const gchar    *search_string,
@@ -526,7 +467,7 @@ ev_application_register_uri (EvApplication  *application,
 
             ev_application_open_uri_in_window (application, uri,
                                                EV_WINDOW (l->data),
-                                               screen, dest, mode,
+                                               display, dest, mode,
                                                search_string,
                                                timestamp);
         }
@@ -536,7 +477,7 @@ ev_application_register_uri (EvApplication  *application,
 
     data = g_new (EvRegisterDocData, 1);
     data->uri = g_strdup (uri);
-    data->screen = screen;
+    data->display = display;
     data->dest = dest ? g_object_ref (dest) : NULL;
     data->mode = mode;
     data->search_string = search_string ? g_strdup (search_string) : NULL;
@@ -595,7 +536,7 @@ static void
 ev_application_open_uri_in_window (EvApplication  *application,
                                    const char     *uri,
                                    EvWindow       *ev_window,
-                                   GdkScreen      *screen,
+                                   GdkDisplay     *display,
                                    EvLinkDest     *dest,
                                    EvWindowRunMode mode,
                                    const gchar    *search_string,
@@ -604,39 +545,22 @@ ev_application_open_uri_in_window (EvApplication  *application,
     if (uri == NULL)
         uri = application->uri;
 
-    if (screen) {
-        ev_stock_icons_set_screen (screen);
-        gtk_window_set_screen (GTK_WINDOW (ev_window), screen);
-    }
-
     /* We need to load uri before showing the window, so
        we can restore window size without flickering */
     if (!gtk_widget_get_realized (GTK_WIDGET (ev_window))) {
-        gtk_widget_hide(GTK_WIDGET (ev_window));
+        gtk_widget_set_visible (GTK_WIDGET (ev_window), FALSE);
         gtk_widget_realize (GTK_WIDGET (ev_window));
     }
     ev_window_open_uri (ev_window, uri, dest, mode, search_string);
-    gtk_widget_show(GTK_WIDGET (ev_window));
+    gtk_widget_set_visible (GTK_WIDGET (ev_window), TRUE);
 
-#ifdef GDK_WINDOWING_X11
-    GdkWindow *gdk_window = gtk_widget_get_window (GTK_WIDGET (ev_window));
-    if (GDK_IS_X11_WINDOW (gdk_window)) {
-        if (timestamp <= 0)
-            timestamp = gdk_x11_get_server_time (gdk_window);
-
-        gdk_x11_window_set_user_time (gdk_window, timestamp);
-        gtk_window_present (GTK_WINDOW (ev_window));
-    } else
-#endif /* GDK_WINDOWING_X11 */
-    {
-        gtk_window_present_with_time (GTK_WINDOW (ev_window), timestamp);
-    }
+    gtk_window_present_with_time (GTK_WINDOW (ev_window), timestamp);
 }
 
 static void
 _ev_application_open_uri_at_dest (EvApplication  *application,
                                   const gchar    *uri,
-                                  GdkScreen      *screen,
+                                  GdkDisplay     *display,
                                   EvLinkDest     *dest,
                                   EvWindowRunMode mode,
                                   const gchar    *search_string,
@@ -644,12 +568,12 @@ _ev_application_open_uri_at_dest (EvApplication  *application,
 {
     EvWindow *ev_window;
 
-    ev_window = ev_application_get_empty_window (application, screen);
+    ev_window = ev_application_get_empty_window (application, display);
     if (!ev_window)
         ev_window = EV_WINDOW (ev_window_new ());
 
     ev_application_open_uri_in_window (application, uri, ev_window,
-                                       screen, dest, mode,
+                                       display, dest, mode,
                                        search_string,
                                        timestamp);
 }
@@ -666,7 +590,7 @@ _ev_application_open_uri_at_dest (EvApplication  *application,
 void
 ev_application_open_uri_at_dest (EvApplication  *application,
                                  const char     *uri,
-                                 GdkScreen      *screen,
+                                 GdkDisplay     *display,
                                  EvLinkDest     *dest,
                                  EvWindowRunMode mode,
                                  const gchar    *search_string,
@@ -676,7 +600,7 @@ ev_application_open_uri_at_dest (EvApplication  *application,
 
     if (application->uri && strcmp (application->uri, uri) != 0) {
         /* spawn a new xreader process */
-        ev_spawn (uri, screen, dest, mode, search_string, timestamp);
+        ev_spawn (uri, display, dest, mode, search_string, timestamp);
         return;
     } else if (!application->uri) {
         application->uri = g_strdup (uri);
@@ -686,9 +610,9 @@ ev_application_open_uri_at_dest (EvApplication  *application,
     /* Register the uri or send Reload to
      * remote instance if already registered
      */
-    ev_application_register_uri (application, uri, screen, dest, mode, search_string, timestamp);
+    ev_application_register_uri (application, uri, display, dest, mode, search_string, timestamp);
 #else
-    _ev_application_open_uri_at_dest (application, uri, screen, dest, mode, search_string, timestamp);
+    _ev_application_open_uri_at_dest (application, uri, display, dest, mode, search_string, timestamp);
 #endif /* ENABLE_DBUS */
 }
 
@@ -701,32 +625,15 @@ ev_application_open_uri_at_dest (EvApplication  *application,
  */
 void
 ev_application_open_window (EvApplication *application,
-                            GdkScreen     *screen,
+                            GdkDisplay    *display,
                             guint32        timestamp)
 {
     GtkWidget *new_window = ev_window_new ();
 
-    if (screen) {
-        ev_stock_icons_set_screen (screen);
-        gtk_window_set_screen (GTK_WINDOW (new_window), screen);
-    }
-
     if (!gtk_widget_get_realized (new_window))
         gtk_widget_realize (new_window);
 
-#ifdef GDK_WINDOWING_X11
-    GdkWindow *gdk_window = gtk_widget_get_window (GTK_WIDGET (new_window));
-    if (GDK_IS_X11_WINDOW (gdk_window)) {
-        if (timestamp <= 0)
-            timestamp = gdk_x11_get_server_time (gdk_window);
-        gdk_x11_window_set_user_time (gdk_window, timestamp);
-
-        gtk_window_present (GTK_WINDOW (new_window));
-    } else
-#endif /* GDK_WINDOWING_X11 */
-    {
-        gtk_window_present_with_time (GTK_WINDOW (new_window), timestamp);
-    }
+    gtk_window_present_with_time (GTK_WINDOW (new_window), timestamp);
 }
 
 #ifdef ENABLE_DBUS
@@ -769,19 +676,15 @@ handle_reload_cb (EvXreaderApplication   *object,
     const gchar     *key;
     GVariant        *value;
     GdkDisplay      *display = NULL;
-    int              screen_number = 0;
     EvLinkDest      *dest = NULL;
     EvWindowRunMode  mode = EV_WINDOW_MODE_NORMAL;
     const gchar     *search_string = NULL;
-    GdkScreen       *screen = NULL;
 
     g_variant_iter_init (&iter, args);
 
     while (g_variant_iter_loop (&iter, "{&sv}", &key, &value)) {
         if (strcmp (key, "display") == 0 && g_variant_classify (value) == G_VARIANT_CLASS_STRING) {
             display = ev_display_open_if_needed (g_variant_get_string (value, NULL));
-        } else if (strcmp (key, "screen") == 0 && g_variant_classify (value) == G_VARIANT_CLASS_INT32) {
-            screen_number = g_variant_get_int32 (value);
         } else if (strcmp (key, "mode") == 0 && g_variant_classify (value) == G_VARIANT_CLASS_UINT32) {
             mode = g_variant_get_uint32 (value);
         } else if (strcmp (key, "page-label") == 0 && g_variant_classify (value) == G_VARIANT_CLASS_STRING) {
@@ -795,12 +698,8 @@ handle_reload_cb (EvXreaderApplication   *object,
         }
     }
 
-    if (display != NULL &&
-        screen_number >= 0 &&
-        screen_number < gdk_display_get_n_screens (display))
-        screen = gdk_display_get_screen (display, screen_number);
-    else
-        screen = gdk_screen_get_default ();
+    if (!display)
+        display = gdk_display_get_default ();
 
     windows = gtk_application_get_windows (GTK_APPLICATION ((application)));
     for (l = windows; l != NULL; l = g_list_next (l)) {
@@ -809,7 +708,7 @@ handle_reload_cb (EvXreaderApplication   *object,
 
         ev_application_open_uri_in_window (application, NULL,
                                            EV_WINDOW (l->data),
-                                           screen, dest, mode,
+                                           display, dest, mode,
                                            search_string,
                                            timestamp);
     }
@@ -826,58 +725,18 @@ handle_reload_cb (EvXreaderApplication   *object,
 void
 ev_application_open_uri_list (EvApplication *application,
                               GSList        *uri_list,
-                              GdkScreen     *screen,
+                              GdkDisplay    *display,
                               guint          timestamp)
 {
     GSList *l;
 
     for (l = uri_list; l != NULL; l = l->next) {
         ev_application_open_uri_at_dest (application, (char *)l->data,
-                                         screen, NULL, 0, NULL,
+                                         display, NULL, 0, NULL,
                                          timestamp);
     }
 }
 
-static void ev_application_accel_map_save(EvApplication* application)
-{
-    gchar* accel_map_file;
-    gchar* tmp_filename;
-    gint fd;
-
-    accel_map_file = g_build_filename (application->dot_dir, "accels", NULL);
-    tmp_filename = g_strdup_printf("%s.XXXXXX", accel_map_file);
-
-    fd = g_mkstemp(tmp_filename);
-
-    if (fd == -1)
-    {
-        g_free(accel_map_file);
-        g_free(tmp_filename);
-
-        return;
-    }
-
-    gtk_accel_map_save_fd(fd);
-    close(fd);
-
-    g_mkdir_with_parents (application->dot_dir, 0700);
-    if (g_rename(tmp_filename, accel_map_file) == -1)
-    {
-        g_unlink(tmp_filename);
-    }
-
-    g_free(accel_map_file);
-    g_free(tmp_filename);
-}
-
-static void ev_application_accel_map_load(EvApplication* application)
-{
-    gchar* accel_map_file;
-
-    accel_map_file = g_build_filename (application->dot_dir, "accels", NULL);
-    gtk_accel_map_load(accel_map_file);
-    g_free(accel_map_file);
-}
 
 static void
 ev_application_shutdown (GApplication *gapplication)
@@ -893,17 +752,11 @@ ev_application_shutdown (GApplication *gapplication)
         application->uri = NULL;
     }
 
-    ev_application_accel_map_save (application);
-
     g_object_unref (application->scr_saver);
     application->scr_saver = NULL;
 
     g_free (application->dot_dir);
     application->dot_dir = NULL;
-
-    if (application->dark_mode_manager) {
-        g_clear_object (&application->dark_mode_manager);
-    }
 
     g_clear_pointer (&supported_mimetypes, g_strfreev);
 
@@ -1009,21 +862,12 @@ ev_application_init (EvApplication *ev_application)
 
     ev_application_init_session (ev_application);
 
-	ev_application_accel_map_load (ev_application);
-
     parse_mimetypes ();
 
     ev_application->scr_saver = totem_scrsaver_new ();
     g_object_set (ev_application->scr_saver,
                   "reason", _("Running in presentation mode"),
                   NULL);
-
-    if (g_strcmp0 (g_getenv ("XDG_CURRENT_DESKTOP"), "XFCE") != 0) {
-        ev_application->dark_mode_manager = xapp_dark_mode_manager_new (FALSE);
-    }
-    else {
-        ev_application->dark_mode_manager = NULL;
-    }
 }
 
 gboolean

@@ -1,12 +1,10 @@
 libview_private_headers = [
     'ev-annotation-window.h',
-    'ev-link-accessible.h',
     'ev-loading-window.h',
     'ev-page-cache.h',
     'ev-pixbuf-cache.h',
     'ev-timeline.h',
     'ev-transition-animation.h',
-    'ev-view-accessible.h',
     'ev-view-cursor.h',
     'ev-view-private.h',
 ]
@@ -18,9 +16,12 @@ libview_headers = [
     'ev-print-operation.h',
     'ev-stock-icons.h',
     'ev-view.h',
-    'ev-web-view.h',
     'ev-view-presentation.h',
 ]
+
+if get_option('epub') and webkit.found()
+    libview_headers += 'ev-web-view.h'
+endif
 
 libview_sources = [
     'ev-annotation-window.c',
@@ -28,7 +29,6 @@ libview_sources = [
     'ev-loading-window.c',
     'ev-jobs.c',
     'ev-job-scheduler.c',
-    'ev-link-accessible.c',
     'ev-page-cache.c',
     'ev-pixbuf-cache.c',
     'ev-print-operation.c',
@@ -36,12 +36,14 @@ libview_sources = [
     'ev-timeline.c',
     'ev-transition-animation.c',
     'ev-view.c',
-    'ev-web-view.c',
-    'ev-view-accessible.c',
     'ev-view-cursor.c',
     'ev-view-presentation.c',
     libview_headers,
 ]
+
+if get_option('epub') and webkit.found()
+    libview_sources += 'ev-web-view.c'
+endif
 
 libview_header_dir = join_paths(header_dir, 'libview')
 
@@ -69,14 +71,13 @@ libview_marshal = gnome.genmarshal(
 libview_deps = [
     libdocument_dep,
     config_h,
-    gail,
     glib,
     gtk,
     gtk_unix_print,
     math,
 ]
 
-if get_option('epub')
+if get_option('epub') and webkit.found()
    libview_deps += webkit
 endif
 

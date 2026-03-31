@@ -28,81 +28,20 @@
 #include <string.h>
 #include <glib/gi18n.h>
 
-static void
-ev_gui_sanitise_popup_position (GtkMenu *menu,
-				GtkWidget *widget,
-				gint *x,
-				gint *y)
-{
-	GdkScreen *screen = gtk_widget_get_screen (widget);
-	gint monitor_num;
-	GdkRectangle monitor;
-	GtkRequisition req;
-
-	g_return_if_fail (widget != NULL);
-
-	gtk_widget_get_preferred_size (GTK_WIDGET (menu), &req, NULL);
-
-	monitor_num = gdk_screen_get_monitor_at_point (screen, *x, *y);
-	gtk_menu_set_monitor (menu, monitor_num);
-	gdk_screen_get_monitor_geometry (screen, monitor_num, &monitor);
-
-	*x = CLAMP (*x, monitor.x, monitor.x + MAX (0, monitor.width - req.width));
-	*y = CLAMP (*y, monitor.y, monitor.y + MAX (0, monitor.height - req.height));
-}
+/* GTK4: GtkMenu positioning functions are removed.
+ * Menus in GTK4 use GtkPopoverMenu which handles its own positioning.
+ * The ev_gui_sanitise_popup_position and ev_gui_menu_position_tree_selection
+ * functions are no longer needed and have been removed.
+ */
 
 void
-ev_gui_menu_position_tree_selection (GtkMenu   *menu,
-				     gint      *x,
-				     gint      *y,
-				     gboolean  *push_in,
-				     gpointer  user_data)
-{
-	GtkTreeSelection *selection;
-	GList *selected_rows;
-	GtkTreeModel *model;
-	GtkTreeView *tree_view = GTK_TREE_VIEW (user_data);
-	GtkWidget *widget = GTK_WIDGET (user_data);
-	GtkRequisition req;
-	GtkAllocation allocation;
-	GdkRectangle visible;
-
-	gtk_widget_get_preferred_size (GTK_WIDGET (menu), &req, NULL);
-	gdk_window_get_origin (gtk_widget_get_window (widget), x, y);
-	gtk_widget_get_allocation (widget, &allocation);
-
-	*x += (allocation.width - req.width) / 2;
-
-	/* Add on height for the treeview title */
-	gtk_tree_view_get_visible_rect (tree_view, &visible);
-	*y += allocation.height - visible.height;
-
-	selection = gtk_tree_view_get_selection (tree_view);
-	selected_rows = gtk_tree_selection_get_selected_rows (selection, &model);
-	if (selected_rows)
-	{
-		GdkRectangle cell_rect;
-
-		gtk_tree_view_get_cell_area (tree_view, selected_rows->data,
-					     NULL, &cell_rect);
-
-		*y += CLAMP (cell_rect.y + cell_rect.height, 0, visible.height);
-
-		g_list_foreach (selected_rows, (GFunc)gtk_tree_path_free, NULL);
-		g_list_free (selected_rows);
-	}
-
-	ev_gui_sanitise_popup_position (menu, widget, x, y);
-}
-
-void           
 file_chooser_dialog_add_writable_pixbuf_formats (GtkFileChooser *chooser)
 {
 	GSList *pixbuf_formats = NULL;
 	GSList *iter;
 	GtkFileFilter *filter;
 	int i;
-  
+
 	filter = gtk_file_filter_new();
 	gtk_file_filter_set_name (filter, _("By extension"));
 	g_object_set_data (G_OBJECT(filter), "pixbuf-format", NULL);
@@ -156,7 +95,7 @@ get_gdk_pixbuf_format_by_extension (gchar *uri)
 	for (iter = pixbuf_formats; iter; iter = iter->next) {
 		gchar **extension_list;
 		GdkPixbufFormat *format = iter->data;
-		
+
 		if (gdk_pixbuf_format_is_disabled (format) ||
 	    	    !gdk_pixbuf_format_is_writable (format))
 		            continue;
