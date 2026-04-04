@@ -164,7 +164,7 @@ config_h = declare_dependency(
     sources: config_h_file
 )
 
-include_dirs = include_directories('.', 'libdocument', 'libview', 'libmisc')
+include_dirs = include_directories('.', 'libdocument', 'libview', 'libmisc', 'cut-n-paste/zoom-control')
 include_root = include_directories('.')
 
 xreader_document_header = [

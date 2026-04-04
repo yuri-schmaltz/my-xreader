@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <menu id="menubar">
+    <submenu>
+      <attribute name="label" translatable="yes">_File</attribute>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">_Open…</attribute>
+          <attribute name="action">win.FileOpen</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Op_en a Copy</attribute>
+          <attribute name="action">win.FileOpenCopy</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Save a Copy…</attribute>
+          <attribute name="action">win.FileSaveAs</attribute>
+        </item>
+      </section>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">_Print…</attribute>
+          <attribute name="action">win.FilePrint</attribute>
+        </item>
+      </section>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">P_roperties</attribute>
+          <attribute name="action">win.FileProperties</attribute>
+        </item>
+      </section>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">_Close</attribute>
+          <attribute name="action">win.FileCloseWindow</attribute>
+        </item>
+      </section>
+    </submenu>
+    <submenu>
+      <attribute name="label" translatable="yes">_Edit</attribute>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">_Copy</attribute>
+          <attribute name="action">win.EditCopy</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">Select _All</attribute>
+          <attribute name="action">win.EditSelectAll</attribute>
+        </item>
+      </section>
+    </submenu>
+    <submenu>
+      <attribute name="label" translatable="yes">_View</attribute>
+      <section>
+        <item>
+          <attribute name="label" translatable="yes">_Continuous</attribute>
+          <attribute name="action">win.ViewContinuous</attribute>
+        </item>
+        <item>
+          <attribute name="label" translatable="yes">_Dual</attribute>
+          <attribute name="action">win.ViewDual</attribute>
+        </item>
+      </section>
+    </submenu>
+  </menu>
+</interface>

@@ -291,7 +291,7 @@ ev_sidebar_bookmarks_query_tooltip (GtkWidget          *widget,
 
         model = gtk_tree_view_get_model (GTK_TREE_VIEW (priv->tree_view));
         if (!gtk_tree_view_get_tooltip_context (GTK_TREE_VIEW (priv->tree_view),
-                                                &x, &y, keyboard_tip,
+                                                x, y, keyboard_tip,
                                                 &model, &path, &iter))
                 return FALSE;
 
@@ -363,15 +363,17 @@ ev_sidebar_bookmarks_popup_menu_show (EvSidebarBookmarks *sidebar_bookmarks,
         return TRUE;
 }
 
-static gboolean
-ev_sidebar_bookmarks_button_press (GtkWidget          *widget,
-                                   GdkEventButton     *event,
-                                   EvSidebarBookmarks *sidebar_bookmarks)
+static void
+ev_sidebar_bookmarks_pressed_cb (GtkGestureClick *gesture,
+                                 int              n_press,
+                                 double           x,
+                                 double           y,
+                                 EvSidebarBookmarks *sidebar_bookmarks)
 {
-        if (event->button != 3)
-                return FALSE;
+        if (gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture)) != 3)
+                return;
 
-        return ev_sidebar_bookmarks_popup_menu_show (sidebar_bookmarks, event->x, event->y, FALSE);
+        ev_sidebar_bookmarks_popup_menu_show (sidebar_bookmarks, (int)x, (int)y, FALSE);
 }
 
 // removed ev_sidebar_bookmarks_popup_menu
@@ -432,6 +434,14 @@ ev_sidebar_bookmarks_init (EvSidebarBookmarks *sidebar_bookmarks)
                           sidebar_bookmarks);
         /* Removed button-press-event for GTK4 */
         gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (priv->tree_view), FALSE);
+
+        GtkGesture *gesture = gtk_gesture_click_new ();
+        gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 0);
+        g_signal_connect (gesture, "pressed",
+                          G_CALLBACK (ev_sidebar_bookmarks_pressed_cb),
+                          sidebar_bookmarks);
+        gtk_widget_add_controller (priv->tree_view, GTK_EVENT_CONTROLLER (gesture));
+
         selection = gtk_tree_view_get_selection (GTK_TREE_VIEW (priv->tree_view));
         g_signal_connect (selection, "changed",
                           G_CALLBACK (ev_sidebar_bookmarks_selection_changed),

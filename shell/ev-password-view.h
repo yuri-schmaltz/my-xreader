@@ -26,25 +26,7 @@
 G_BEGIN_DECLS
 
 #define EV_TYPE_PASSWORD_VIEW            (ev_password_view_get_type ())
-#define EV_PASSWORD_VIEW(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), EV_TYPE_PASSWORD_VIEW, EvPasswordView))
-#define EV_IS_PASSWORD_VIEW(obj)         (G_TYPE_CHECK_INSTANCE_TYPE ((obj), EV_TYPE_PASSWORD_VIEW))
-
-typedef struct _EvPasswordView        EvPasswordView;
-typedef struct _EvPasswordViewClass   EvPasswordViewClass;
-typedef struct _EvPasswordViewPrivate EvPasswordViewPrivate;
-
-struct _EvPasswordView {
-	GtkViewport parent_instance;
-	
-	EvPasswordViewPrivate *priv;
-};
-
-struct _EvPasswordViewClass {
-	GtkViewportClass parent_class;
-
-	/* signals */
-	void (*unlock) (EvPasswordView	*self);
-};
+G_DECLARE_FINAL_TYPE (EvPasswordView, ev_password_view, EV, PASSWORD_VIEW, GtkBox)
 
 GType	      ev_password_view_get_type                (void) G_GNUC_CONST;
 GtkWidget    *ev_password_view_new                     (GtkWindow      *parent);
