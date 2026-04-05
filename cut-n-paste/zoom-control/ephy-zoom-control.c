@@ -59,7 +59,7 @@ enum
 
 static guint signals[LAST_SIGNAL] = { 0 };
 
-G_DEFINE_TYPE_WITH_PRIVATE (EphyZoomControl, ephy_zoom_control, GTK_TYPE_TOOL_ITEM)
+G_DEFINE_TYPE_WITH_PRIVATE (EphyZoomControl, ephy_zoom_control, GTK_TYPE_BOX)
 
 static void
 combo_changed_cb (GtkComboBox *combo, EphyZoomControl *control)
@@ -138,13 +138,16 @@ row_is_separator (GtkTreeModel *model,
 }
 
 static void
-ephy_zoom_control_finalize (GObject *o)
+ephy_zoom_control_dispose (GObject *o)
 {
 	EphyZoomControl *control = EPHY_ZOOM_CONTROL (o);
 
-	g_object_unref (control->priv->combo);
+	if (control->priv->combo) {
+		g_object_unref (control->priv->combo);
+		control->priv->combo = NULL;
+	}
 
-	G_OBJECT_CLASS (ephy_zoom_control_parent_class)->finalize (o);
+	G_OBJECT_CLASS (ephy_zoom_control_parent_class)->dispose (o);
 }
 
 static void
@@ -195,18 +198,8 @@ ephy_zoom_control_init (EphyZoomControl *control)
 #else
 	gtk_combo_box_set_focus_on_click (p->combo, FALSE);
 #endif
-	g_object_ref_sink (G_OBJECT (p->combo));
-	gtk_widget_show (GTK_WIDGET (p->combo));
-
-	i = ephy_zoom_get_zoom_level_index (p->zoom);
-	gtk_combo_box_set_active (p->combo, i);
-
-	vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-	gtk_box_set_homogeneous (GTK_BOX (vbox), TRUE);
-	gtk_box_pack_start (GTK_BOX (vbox), GTK_WIDGET (p->combo), TRUE, FALSE, 0);
-	gtk_widget_show (vbox);
-
-	gtk_container_add (GTK_CONTAINER (control), vbox);
+	gtk_box_append (GTK_BOX (vbox), GTK_WIDGET (p->combo));
+	gtk_box_append (GTK_BOX (control), vbox);
 
 	p->handler_id = g_signal_connect (p->combo, "changed",
 					  G_CALLBACK (combo_changed_cb), control);
@@ -280,7 +273,7 @@ ephy_zoom_control_class_init (EphyZoomControlClass *klass)
 
 	object_class->set_property = ephy_zoom_control_set_property;
 	object_class->get_property = ephy_zoom_control_get_property;
-	object_class->finalize = ephy_zoom_control_finalize;
+	object_class->dispose = ephy_zoom_control_dispose;
 
 	g_object_class_install_property (object_class,
 					 PROP_ZOOM,

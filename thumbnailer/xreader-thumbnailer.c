@@ -46,6 +46,7 @@ struct AsyncData {
 	const gchar *output;
 	gint         size;
 	gboolean     success;
+	GMainLoop   *loop;
 };
 
 /* Time monitor: copied from totem */
@@ -222,7 +223,7 @@ xreader_thumbnail_pngenc_get_async (struct AsyncData *data)
 						     data->size);
 	ev_document_doc_mutex_unlock ();
 	
-	g_idle_add ((GSourceFunc)gtk_main_quit, NULL);
+	g_main_loop_quit (data->loop);
 	
 	return NULL;
 }
@@ -302,7 +303,9 @@ main (int argc, char *argv[])
 	if (EV_IS_ASYNC_RENDERER (document)) {
 		struct AsyncData data;
 
-		gtk_init (&argc, &argv);
+		gtk_init ();
+		
+		data.loop = g_main_loop_new (NULL, FALSE);
 		
 		data.document = document;
 		data.output = output;
@@ -312,7 +315,8 @@ main (int argc, char *argv[])
 				(GThreadFunc) xreader_thumbnail_pngenc_get_async,
 				&data);
 		
-		gtk_main ();
+		g_main_loop_run (data.loop);
+		g_main_loop_unref (data.loop);
 
 		g_object_unref (document);
 		ev_shutdown ();

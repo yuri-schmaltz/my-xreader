@@ -213,7 +213,7 @@ static void       ev_view_direction_changed                  (GtkWidget         
 static void       set_scroll_adjustment                      (EvView            *view,
 							      GtkOrientation     orientation,
 							      GtkAdjustment     *adjustment);
-static void       ev_view_style_updated                      (GtkWidget          *widget);
+
 static void       ev_view_remove_all                         (EvView             *view);
 static void       ev_view_remove_all_form_fields             (EvView             *view);
 
@@ -276,8 +276,6 @@ static double	zoom_for_size_best_fit 			     (gdouble doc_width,
 							      gdouble doc_height,
 							      int     target_width,
 							      int     target_height);
-static gboolean ev_view_can_zoom                             (EvView *view,
-                                                              gdouble factor);
 static void     ev_view_zoom                                 (EvView *view,
                                                               gdouble factor);
 static void     ev_view_zoom_for_size                        (EvView *view,
@@ -423,20 +421,6 @@ ev_view_build_height_to_page_cache (EvView		*view,
 	}
 }
 
-static void
-ev_height_to_page_cache_free (EvHeightToPageCache *cache)
-{
-	if (cache->height_to_page) {
-		g_free (cache->height_to_page);
-		cache->height_to_page = NULL;
-	}
-
-	if (cache->dual_height_to_page) {
-		g_free (cache->dual_height_to_page);
-		cache->dual_height_to_page = NULL;
-	}
-	g_free (cache);
-}
 
 #if 0
 static EvHeightToPageCache *
@@ -2939,22 +2923,6 @@ ev_view_get_annotation_at_location (EvView  *view,
 		return NULL;
 }
 
-static void
-ev_view_annotation_show_popup_window (EvView    *view,
-				      GtkWidget *window)
-{
-	EvViewWindowChild *child;
-
-	if (!window)
-		return;
-
-	child = ev_view_get_window_child (view, window);
-	if (!child->visible) {
-		child->visible = TRUE;
-		ev_view_window_child_move (view, child, child->x, child->y);
-		gtk_widget_show (window);
-	}
-}
 
 static void
 ev_view_create_annotation (EvView *view)
@@ -3365,9 +3333,10 @@ ev_view_size_allocate (GtkWidget *widget,
 		gtk_widget_size_allocate (child->widget, &view_area, -1);
 	}
 
-	if (view->window_children)
+	if (view->window_children) {
 		/* GTK4: surface origin is not directly accessible this way. */
 		root_x = 0; root_y = 0;
+	}
 
 	for (l = view->window_children; l && l->data; l = g_list_next (l)) {
 		EvViewWindowChild *child;
@@ -4171,244 +4140,11 @@ ev_view_set_property (GObject      *object,
 	}
 }
 
-static void
-pan_gesture_pan_cb (GtkGesturePan   *gesture,
-		    GtkPanDirection  direction,
-		    gdouble          offset,
-		    EvView          *view)
-{
-	GtkAllocation allocation;
 
-	gtk_widget_get_allocation (GTK_WIDGET (view), &allocation);
 
-	if (view->continuous ||
-	    allocation.width < view->requisition.width) {
-	gtk_gesture_set_state (GTK_GESTURE (gesture),
-				       GTK_EVENT_SEQUENCE_DENIED);
-		return;
-	}
 
-#define PAN_ACTION_DISTANCE 200
 
-	view->pan_action = EV_PAN_ACTION_NONE;
-	gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
 
-	if (offset > PAN_ACTION_DISTANCE) {
-		if (direction == GTK_PAN_DIRECTION_LEFT ||
-		    gtk_widget_get_direction (GTK_WIDGET (view)) == GTK_TEXT_DIR_RTL)
-			view->pan_action = EV_PAN_ACTION_NEXT;
-		else
-			view->pan_action = EV_PAN_ACTION_PREV;
-	}
-#undef PAN_ACTION_DISTANCE
-}
-
-static void
-pan_gesture_end_cb (GtkGesture       *gesture,
-		    GdkEventSequence *sequence,
-		    EvView           *view)
-{
-	if (!gtk_gesture_handles_sequence (gesture, sequence))
-		return;
-
-	if (view->pan_action == EV_PAN_ACTION_PREV)
-		ev_view_previous_page (view);
-	else if (view->pan_action == EV_PAN_ACTION_NEXT)
-		ev_view_next_page (view);
-
-	view->pan_action = EV_PAN_ACTION_NONE;
-}
-
-static void
-ev_view_hierarchy_changed (GtkWidget *widget,
-			   GtkWidget *previous_toplevel)
-{
-	GtkWidget *parent = gtk_widget_get_parent (widget);
-	EvView *view = EV_VIEW (widget);
-
-	if (parent && !view->pan_gesture) {
-			view->pan_gesture =
-				gtk_gesture_pan_new (GTK_ORIENTATION_HORIZONTAL);
-			gtk_widget_add_controller (widget, GTK_EVENT_CONTROLLER (view->pan_gesture));
-		g_signal_connect (view->pan_gesture, "pan",
-				  G_CALLBACK (pan_gesture_pan_cb), widget);
-		g_signal_connect (view->pan_gesture, "end",
-				  G_CALLBACK (pan_gesture_end_cb), widget);
-
-		gtk_gesture_single_set_touch_only (GTK_GESTURE_SINGLE (view->pan_gesture), TRUE);
-		gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (view->pan_gesture),
-							    GTK_PHASE_CAPTURE);
-	} else if (!parent && view->pan_gesture) {
-		g_clear_object (&view->pan_gesture);
-	}
-}
-
-static gint
-ev_view_mapping_compare (const EvMapping *a,
-			 const EvMapping *b,
-			 gpointer         user_data)
-{
-	GtkTextDirection text_direction = GPOINTER_TO_INT (user_data);
-	gint y1 = a->area.y1 + (a->area.y2 - a->area.y1) / 2;
-	gint y2 = b->area.y1 + (b->area.y2 - b->area.y1) / 2;
-
-	if (y1 == y2) {
-		gint x1 = a->area.x1 + (a->area.x2 - a->area.x1) / 2;
-		gint x2 = b->area.x1 + (b->area.x2 - b->area.x1) / 2;
-
-		if (text_direction == GTK_TEXT_DIR_RTL)
-			return (x1 < x2) ? 1 : ((x1 == x2) ? 0 : -1);
-
-		return (x1 < x2) ? -1 : ((x1 == x2) ? 0 : 1);
-	}
-
-	return (y1 < y2) ? -1 : 1;
-}
-
-static GList *
-ev_view_get_sorted_mapping_list (EvView          *view,
-				 GtkDirectionType direction,
-				 gint             page)
-{
-	GList         *mapping_list = NULL, *l;
-	EvMappingList *forms_mapping;
-
-	forms_mapping = ev_page_cache_get_form_field_mapping (view->page_cache, page);
-
-	for (l = ev_mapping_list_get_list (forms_mapping); l; l = g_list_next (l)) {
-		EvMapping   *mapping = (EvMapping *)l->data;
-		EvFormField *field = (EvFormField *)mapping->data;
-
-		if (field->is_read_only || EV_IS_FORM_FIELD_SIGNATURE (field))
-			continue;
-
-		mapping_list = g_list_prepend (mapping_list, mapping);
-	}
-
-	if (!mapping_list)
-		return NULL;
-
-	mapping_list = g_list_sort_with_data (g_list_reverse (mapping_list),
-					      (GCompareDataFunc)ev_view_mapping_compare,
-					      GINT_TO_POINTER (gtk_widget_get_direction (GTK_WIDGET (view))));
-
-	if (direction == GTK_DIR_TAB_BACKWARD)
-		mapping_list = g_list_reverse (mapping_list);
-	return mapping_list;
-}
-
-static gboolean
-child_focus_forward_idle_cb (gpointer user_data)
-{
-	EvView *view = EV_VIEW (user_data);
-
-	view->child_focus_idle_id = 0;
-	gtk_widget_child_focus (GTK_WIDGET (view), GTK_DIR_TAB_FORWARD);
-
-	return G_SOURCE_REMOVE;
-}
-
-static gboolean
-child_focus_backward_idle_cb (gpointer user_data)
-{
-	EvView *view = EV_VIEW (user_data);
-
-	view->child_focus_idle_id = 0;
-	gtk_widget_child_focus (GTK_WIDGET (view), GTK_DIR_TAB_BACKWARD);
-
-	return G_SOURCE_REMOVE;
-}
-
-static void
-schedule_child_focus_in_idle (EvView           *view,
-			      GtkDirectionType  direction)
-{
-	if (view->child_focus_idle_id)
-		g_source_remove (view->child_focus_idle_id);
-	view->child_focus_idle_id =
-		g_idle_add (direction == GTK_DIR_TAB_FORWARD ? child_focus_forward_idle_cb : child_focus_backward_idle_cb,
-			    view);
-}
-
-static gboolean
-ev_view_focus_next (EvView           *view,
-		    GtkDirectionType  direction)
-{
-	EvMapping *focus_element;
-	GList     *elements;
-	gboolean   had_focused_element;
-
-	if (view->focused_element) {
-		GList *l;
-
-		elements = ev_view_get_sorted_mapping_list (view, direction, view->focused_element_page);
-		l = g_list_find (elements, view->focused_element);
-		l = g_list_next (l);
-		focus_element = l ? l->data : NULL;
-		had_focused_element = TRUE;
-	} else {
-		elements = ev_view_get_sorted_mapping_list (view, direction, view->current_page);
-		focus_element = elements ? elements->data : NULL;
-		had_focused_element = FALSE;
-	}
-
-	g_list_free (elements);
-
-	if (focus_element) {
-		ev_view_remove_all_form_fields (view);
-        ev_view_focus_form_field (view, EV_FORM_FIELD (focus_element->data));
-
-		return TRUE;
-	}
-
-	ev_view_remove_all_form_fields (view);
-	ev_view_set_focused_element (view, NULL, -1);
-
-	/* Only try to move the focus to next/previous pages when the current page had
-	 * a focused element. This prevents the view from jumping to the first/last page
-	 * when there are not focusable elements.
-	 */
-	if (!had_focused_element)
-		return FALSE;
-
-	/* FIXME: this doesn't work if the next/previous page doesn't have form fields */
-	if (direction == GTK_DIR_TAB_FORWARD) {
-		if (ev_view_next_page (view)) {
-			schedule_child_focus_in_idle (view, direction);
-			return TRUE;
-		}
-	} else if (direction == GTK_DIR_TAB_BACKWARD) {
-		if (ev_view_previous_page (view)) {
-			schedule_child_focus_in_idle (view, direction);
-			return TRUE;
-		}
-	}
-
-	return FALSE;
-}
-
-static gboolean
-ev_view_focus (GtkWidget        *widget,
-	       GtkDirectionType  direction)
-{
-	EvView *view = EV_VIEW (widget);
-
-	if (view->document) {
-		if (direction == GTK_DIR_TAB_FORWARD || direction == GTK_DIR_TAB_BACKWARD)
-			return ev_view_focus_next (view, direction);
-	}
-
-	return GTK_WIDGET_CLASS (ev_view_parent_class)->focus (widget, direction);
-}
-static void
-ev_view_parent_set (GtkWidget *widget,
-		    GtkWidget *previous_parent)
-{
-	GtkWidget *parent;
-
-	parent = gtk_widget_get_parent (widget);
-	g_assert (!parent || GTK_IS_SCROLLED_WINDOW (parent));
-}
 
 static gboolean
 ev_view_activate_form_field (EvView      *view,
@@ -4589,10 +4325,6 @@ ev_view_direction_changed (GtkWidget        *widget,
 		GTK_WIDGET_CLASS (ev_view_parent_class)->direction_changed (widget, previous_direction);
 }
 
-static void
-ev_view_style_updated (GtkWidget *widget)
-{
-}
 
 static void
 ev_view_remove_all (EvView *view)
@@ -5359,18 +5091,6 @@ ev_view_can_zoom (EvView *view, gdouble factor)
 }
 #endif
 
-static gboolean
-ev_view_can_zoom (EvView *view, gdouble factor)
-{
-	if (factor == 1.0)
-		return TRUE;
-
-	else if (factor < 1.0) {
-		return ev_view_can_zoom_out (view);
-	} else {
-		return ev_view_can_zoom_in (view);
-	}
-}
 
 gboolean
 ev_view_can_zoom_in (EvView *view)
@@ -5771,158 +5491,8 @@ ev_view_highlight_forward_search (EvView       *view,
 /* compute_new_selection_rect/text calculates the area currently selected by
  * view_rect.  each handles a different mode;
  */
-static GList *
-compute_new_selection_rect (EvView       *view,
-			    GdkPoint     *start,
-			    GdkPoint     *stop)
-{
-	GdkRectangle view_rect;
-	int n_pages, i;
-	GList *list = NULL;
 
-	g_assert (view->selection_mode == EV_VIEW_SELECTION_RECTANGLE);
 
-	view_rect.x = MIN (start->x, stop->x);
-	view_rect.y = MIN (start->y, stop->y);
-	view_rect.width = MAX (start->x, stop->x) - view_rect.x;
-	view_rect.width = MAX (start->y, stop->y) - view_rect.y;
-
-	n_pages = ev_document_get_n_pages (view->document);
-
-	for (i = 0; i < n_pages; i++) {
-		GdkRectangle page_area;
-		GtkBorder border;
-
-		if (ev_view_get_page_extents (view, i, &page_area, &border)) {
-			GdkRectangle overlap;
-
-			if (gdk_rectangle_intersect (&page_area, &view_rect, &overlap)) {
-				EvViewSelection *selection;
-
-				selection = g_slice_new0 (EvViewSelection);
-				selection->page = i;
-				_ev_view_transform_view_rect_to_doc_rect (view, &overlap, &page_area, &border,
-									  &(selection->rect));
-
-				list = g_list_append (list, selection);
-			}
-		}
-	}
-
-	return list;
-}
-
-static gboolean
-gdk_rectangle_point_in (GdkRectangle *rectangle,
-			GdkPoint     *point)
-{
-	return rectangle->x <= point->x &&
-		rectangle->y <= point->y &&
-		point->x < rectangle->x + rectangle->width &&
-		point->y < rectangle->y + rectangle->height;
-}
-
-static GList *
-compute_new_selection_text (EvView          *view,
-			    EvSelectionStyle style,
-			    GdkPoint        *start,
-			    GdkPoint        *stop)
-{
-	int n_pages, i, first, last;
-	GList *list = NULL;
-	EvViewSelection *selection;
-	gdouble width, height;
-	int start_page, end_page;
-
-	g_assert (view->selection_mode == EV_VIEW_SELECTION_TEXT);
-
-	n_pages = ev_document_get_n_pages (view->document);
-
-	/* First figure out the range of pages the selection
-	 * affects. */
-	first = n_pages;
-	last = 0;
-	if (view->continuous) {
-		start_page = 0;
-		end_page = n_pages;
-	} else if (view->dual_page) {
-		start_page = view->start_page;
-		end_page = view->end_page + 1;
-	} else {
-		start_page = view->current_page;
-		end_page = view->current_page + 1;
-	}
-
-	for (i = start_page; i < end_page; i++) {
-		GdkRectangle page_area;
-		GtkBorder border;
-
-		ev_view_get_page_extents (view, i, &page_area, &border);
-		page_area.x -= border.left;
-		page_area.y -= border.top;
-		page_area.width += border.left + border.right;
-		page_area.height += border.top + border.bottom;
-		if (gdk_rectangle_point_in (&page_area, start) ||
-		    gdk_rectangle_point_in (&page_area, stop)) {
-			if (first == n_pages)
-				first = i;
-			last = i;
-		}
-
-	}
-
-	/* Now create a list of EvViewSelection's for the affected
-	 * pages.  This could be an empty list, a list of just one
-	 * page or a number of pages.*/
-	for (i = first; i < last + 1; i++) {
-		GdkRectangle page_area;
-		GtkBorder border;
-		GdkPoint *point;
-
-		get_doc_page_size (view, i, &width, &height);
-
-		selection = g_slice_new0 (EvViewSelection);
-		selection->page = i;
-		selection->style = style;
-		selection->rect.x1 = selection->rect.y1 = 0;
-		selection->rect.x2 = width;
-		selection->rect.y2 = height;
-
-		ev_view_get_page_extents (view, i, &page_area, &border);
-		if (gdk_rectangle_point_in (&page_area, start))
-			point = start;
-		else
-			point = stop;
-
-		if (i == first) {
-			_ev_view_transform_view_point_to_doc_point (view, point,
-								    &page_area, &border,
-								    &selection->rect.x1,
-								    &selection->rect.y1);
-			selection->rect.x1 = MAX (selection->rect.x1, 0);
-			selection->rect.y1 = MAX (selection->rect.y1, 0);
-		}
-
-		/* If the selection is contained within just one page,
-		 * make sure we don't write 'start' into both points
-		 * in selection->rect. */
-		if (first == last)
-			point = stop;
-
-		if (i == last) {
-			_ev_view_transform_view_point_to_doc_point (view, point,
-								    &page_area, &border,
-								    &selection->rect.x2,
-								    &selection->rect.y2);
-			selection->rect.x2 = MAX (selection->rect.x2, 0);
-			selection->rect.y2 = MAX (selection->rect.y2, 0);
-		}
-
-		list = g_list_prepend (list, selection);
-	}
-
-	return g_list_reverse (list);
-}
 
 /* This function takes the newly calculated list, and figures out which regions
  * have changed.  It then queues a redraw approporiately.
@@ -6054,20 +5624,6 @@ merge_selection_region (EvView *view,
 	g_list_free_full (old_list, (GDestroyNotify)selection_free);
 }
 
-static void
-compute_selections (EvView          *view,
-		    EvSelectionStyle style,
-		    GdkPoint        *start,
-		    GdkPoint        *stop)
-{
-	GList *list;
-
-	if (view->selection_mode == EV_VIEW_SELECTION_RECTANGLE)
-		list = compute_new_selection_rect (view, start, stop);
-	else
-		list = compute_new_selection_text (view, style, start, stop);
-	merge_selection_region (view, list);
-}
 
 /* Free's the selection.  It's up to the caller to queue redraws if needed.
  */

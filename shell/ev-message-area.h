@@ -57,8 +57,8 @@ GtkWidget *ev_message_area_new                  (GtkMessageType type,
 						 ...);
 void       ev_message_area_set_image            (EvMessageArea *area,
 						 GtkWidget     *image);
-void       ev_message_area_set_image_from_stock (EvMessageArea *area,
-						 const gchar   *stock_id);
+void       ev_message_area_set_image_from_icon_name (EvMessageArea *area,
+						 const gchar   *icon_name);
 void       ev_message_area_set_text             (EvMessageArea *area,
 						 const gchar   *str);
 void       ev_message_area_set_secondary_text   (EvMessageArea *area,

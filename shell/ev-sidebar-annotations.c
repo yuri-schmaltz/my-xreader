@@ -119,7 +119,6 @@ ev_sidebar_annotations_init (EvSidebarAnnotations *ev_annots)
 	GtkTreeSelection *selection;
 	GtkWidget *separator;
 	GtkWidget *toolbar_box;
-	GtkWidget *toolitem;
 	GtkWidget *hbox;
 
 	ev_annots->priv = ev_sidebar_annotations_get_instance_private (ev_annots);

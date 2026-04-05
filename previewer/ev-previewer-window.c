@@ -20,10 +20,9 @@
 
 #include <config.h>
 
-#include <gtk/gtkunixprint.h>
 #include <glib/gi18n.h>
 #include <xreader-view.h>
-#include "ev-page-action.h"
+#include "ev-document-model.h"
 
 #include "ev-previewer-window.h"
 
@@ -33,9 +32,7 @@ struct _EvPreviewerWindow {
 	EvDocumentModel  *model;
 	EvDocument       *document;
 
-	GtkActionGroup   *action_group;
-	GtkActionGroup   *accels_group;
-	GtkUIManager     *ui_manager;
+	GSimpleActionGroup *action_group;
 
 	GtkWidget        *swindow;
 	EvView           *view;
@@ -44,7 +41,6 @@ struct _EvPreviewerWindow {
 	/* Printing */
 	GtkPrintSettings *print_settings;
 	GtkPageSetup     *print_page_setup;
-	GtkPrinter       *printer;
 	gchar            *print_job_title;
 	gchar            *source_file;
 };
@@ -70,292 +66,115 @@ get_screen_dpi (EvPreviewerWindow *window)
 }
 
 static void
-ev_previewer_window_error_dialog_run (EvPreviewerWindow *window,
-				      GError            *error)
+ev_previewer_window_close (GSimpleAction     *action,
+			   GVariant          *parameter,
+			   gpointer          user_data)
 {
-	GtkWidget *dialog;
-
-	dialog = gtk_message_dialog_new (GTK_WINDOW (window),
-					 GTK_DIALOG_MODAL |
-					 GTK_DIALOG_DESTROY_WITH_PARENT,
-					 GTK_MESSAGE_ERROR,
-					 GTK_BUTTONS_CLOSE,
-					 "%s", _("Failed to print document"));
-	gtk_message_dialog_format_secondary_text (GTK_MESSAGE_DIALOG (dialog),
-						  "%s", error->message);
-	gtk_dialog_run (GTK_DIALOG (dialog));
-	gtk_widget_destroy (dialog);
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
+	gtk_window_destroy (GTK_WINDOW (window));
 }
 
 static void
-ev_previewer_window_close (GtkAction         *action,
-			   EvPreviewerWindow *window)
+ev_previewer_window_previous_page (GSimpleAction     *action,
+				   GVariant          *parameter,
+				   gpointer          user_data)
 {
-	gtk_widget_destroy (GTK_WIDGET (window));
-}
-
-static void
-ev_previewer_window_previous_page (GtkAction         *action,
-				   EvPreviewerWindow *window)
-{
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
 	ev_view_previous_page (window->view);
 }
 
 static void
-ev_previewer_window_next_page (GtkAction         *action,
-			       EvPreviewerWindow *window)
+ev_previewer_window_next_page (GSimpleAction     *action,
+			       GVariant          *parameter,
+			       gpointer          user_data)
 {
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
 	ev_view_next_page (window->view);
 }
 
 static void
-ev_previewer_window_zoom_in (GtkAction         *action,
-			     EvPreviewerWindow *window)
+ev_previewer_window_zoom_in (GSimpleAction     *action,
+			     GVariant          *parameter,
+			     gpointer          user_data)
 {
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
 	ev_document_model_set_sizing_mode (window->model, EV_SIZING_FREE);
 	ev_view_zoom_in (window->view);
 }
 
 static void
-ev_previewer_window_zoom_out (GtkAction         *action,
-			      EvPreviewerWindow *window)
+ev_previewer_window_zoom_out (GSimpleAction     *action,
+			      GVariant          *parameter,
+			      gpointer          user_data)
 {
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
 	ev_document_model_set_sizing_mode (window->model, EV_SIZING_FREE);
 	ev_view_zoom_out (window->view);
 }
 
 static void
-ev_previewer_window_zoom_reset (GtkAction         *action,
-			      EvPreviewerWindow *window)
+ev_previewer_window_zoom_reset (GSimpleAction     *action,
+			      GVariant          *parameter,
+			      gpointer          user_data)
 {
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
 	ev_document_model_set_sizing_mode (window->model, EV_SIZING_FREE);
   ev_document_model_set_scale (window->model, get_screen_dpi (window) / 72.0);
 }
 
 static void
-ev_previewer_window_zoom_best_fit (GtkToggleAction   *action,
-				   EvPreviewerWindow *window)
+ev_previewer_window_zoom_best_fit (GSimpleAction     *action,
+				   GVariant          *state,
+				   gpointer          user_data)
 {
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
+	gboolean active = g_variant_get_boolean (state);
 	ev_document_model_set_sizing_mode (window->model,
-					   gtk_toggle_action_get_active (action) ?
-					   EV_SIZING_BEST_FIT : EV_SIZING_FREE);
+					   active ? EV_SIZING_BEST_FIT : EV_SIZING_FREE);
+	g_simple_action_set_state (action, state);
 }
 
 static void
-ev_previewer_window_zoom_page_width (GtkToggleAction   *action,
-				     EvPreviewerWindow *window)
+ev_previewer_window_zoom_page_width (GSimpleAction     *action,
+				     GVariant          *state,
+				     gpointer          user_data)
 {
+	EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data);
+	gboolean active = g_variant_get_boolean (state);
 	ev_document_model_set_sizing_mode (window->model,
-					   gtk_toggle_action_get_active (action) ?
-					   EV_SIZING_FIT_WIDTH : EV_SIZING_FREE);
+					   active ? EV_SIZING_FIT_WIDTH : EV_SIZING_FREE);
+	g_simple_action_set_state (action, state);
 }
 
 static void
-ev_previewer_window_action_page_activated (GtkAction         *action,
-					   EvLink            *link,
-					   EvPreviewerWindow *window)
+ev_previewer_window_print (GSimpleAction     *action,
+			   GVariant          *parameter,
+			   gpointer          user_data)
 {
-	ev_view_handle_link (window->view, link);
-	gtk_widget_grab_focus (GTK_WIDGET (window->view));
+	/* EvPreviewerWindow *window = EV_PREVIEWER_WINDOW (user_data); */
+	/* FIXME: Implement printing using GtkPrintOperation for GTK4.
+	 * GtkPrintJob and GtkPrinter enumeration are deprecated/removed.
+	 */
 }
 
-static void
-ev_previewer_window_focus_page_selector (GtkAction         *action,
-					 EvPreviewerWindow *window)
-{
-	GtkAction *page_action;
-
-	page_action = gtk_action_group_get_action (window->action_group,
-						   "PageSelector");
-	ev_page_action_grab_focus (EV_PAGE_ACTION (page_action));
-}
-
-static void
-ev_previewer_window_scroll_forward (GtkAction         *action,
-				    EvPreviewerWindow *window)
-{
-	ev_view_scroll (window->view, GTK_SCROLL_PAGE_FORWARD, FALSE);
-}
-
-static void
-ev_previewer_window_scroll_backward (GtkAction         *action,
-				     EvPreviewerWindow *window)
-{
-	ev_view_scroll (window->view, GTK_SCROLL_PAGE_BACKWARD, FALSE);
-}
-
-static void
-ev_previewer_window_print_finished (GtkPrintJob       *print_job,
-				    EvPreviewerWindow *window,
-				    GError            *error)
-{
-	if (error) {
-		ev_previewer_window_error_dialog_run (window, error);
-	}
-
-	g_object_unref (print_job);
-	gtk_widget_destroy (GTK_WIDGET (window));
-}
-
-static void
-ev_previewer_window_do_print (EvPreviewerWindow *window)
-{
-	GtkPrintJob *job;
-	GError      *error = NULL;
-
-	job = gtk_print_job_new (window->print_job_title ?
-				 window->print_job_title :
-				 window->source_file,
-				 window->printer,
-				 window->print_settings,
-				 window->print_page_setup);
-	if (gtk_print_job_set_source_file (job, window->source_file, &error)) {
-		gtk_print_job_send (job,
-				    (GtkPrintJobCompleteFunc)ev_previewer_window_print_finished,
-				    window, NULL);
-	} else {
-		ev_previewer_window_error_dialog_run (window, error);
-		g_error_free (error);
-	}
-
-	gtk_widget_hide (GTK_WIDGET (window));
-}
-
-static void
-ev_previewer_window_enumerate_finished (EvPreviewerWindow *window)
-{
-	if (window->printer) {
-		ev_previewer_window_do_print (window);
-	} else {
-		GError *error = NULL;
-
-		g_set_error (&error,
-			     GTK_PRINT_ERROR,
-			     GTK_PRINT_ERROR_GENERAL,
-			     _("The selected printer '%s' could not be found"),
-			     gtk_print_settings_get_printer (window->print_settings));
-
-		ev_previewer_window_error_dialog_run (window, error);
-		g_error_free (error);
-	}
-}
-
-static gboolean
-ev_previewer_window_enumerate_printers (GtkPrinter        *printer,
-					EvPreviewerWindow *window)
-{
-	const gchar *printer_name;
-
-	printer_name = gtk_print_settings_get_printer (window->print_settings);
-	if ((printer_name
-	     && strcmp (printer_name, gtk_printer_get_name (printer)) == 0) ||
-	    (!printer_name && gtk_printer_is_default (printer))) {
-		if (window->printer)
-			g_object_unref (window->printer);
-		window->printer = g_object_ref (printer);
-
-		return TRUE; /* we're done */
-	}
-
-	return FALSE; /* continue the enumeration */
-}
-
-static void
-ev_previewer_window_print (GtkAction         *action,
-			   EvPreviewerWindow *window)
-{
-	if (!window->print_settings)
-		window->print_settings = gtk_print_settings_new ();
-	if (!window->print_page_setup)
-		window->print_page_setup = gtk_page_setup_new ();
-	gtk_enumerate_printers ((GtkPrinterFunc)ev_previewer_window_enumerate_printers,
-				window,
-				(GDestroyNotify)ev_previewer_window_enumerate_finished,
-				FALSE);
-}
-
-static const GtkActionEntry action_entries[] = {
-	{ "FileCloseWindow", GTK_STOCK_CLOSE, NULL, "<control>W",
-	  NULL,
-	  G_CALLBACK (ev_previewer_window_close) },
-	{ "GoPreviousPage", "xsi-go-previous-symbolic", N_("_Previous Page"), "<control>Page_Up",
-          N_("Go to the previous page"),
-          G_CALLBACK (ev_previewer_window_previous_page) },
-        { "GoNextPage", "xsi-go-next-symbolic", N_("_Next Page"), "<control>Page_Down",
-          N_("Go to the next page"),
-          G_CALLBACK (ev_previewer_window_next_page) },
-        { "ViewZoomIn", "xsi-zoom-in-symbolic", NULL, "<control>plus",
-          N_("Enlarge the document"),
-          G_CALLBACK (ev_previewer_window_zoom_in) },
-        { "ViewZoomOut", "xsi-zoom-out-symbolic", NULL, "<control>minus",
-          N_("Shrink the document"),
-          G_CALLBACK (ev_previewer_window_zoom_out) },
-        { "ViewZoomReset", "xsi-zoom-original-symbolic", NULL, "<control>0",
-          N_("Original size"),
-          G_CALLBACK (ev_previewer_window_zoom_reset) },
-	/* translators: Print document currently shown in the Print Preview window */
-	{ "PreviewPrint", "xsi-document-print-symbolic", N_("Print"), NULL,
-	  N_("Print this document"),
-	  G_CALLBACK (ev_previewer_window_print) }
+static const GActionEntry action_entries[] = {
+	{ "FileCloseWindow", ev_previewer_window_close },
+	{ "GoPreviousPage", ev_previewer_window_previous_page },
+	{ "GoNextPage", ev_previewer_window_next_page },
+	{ "ViewZoomIn", ev_previewer_window_zoom_in },
+	{ "ViewZoomOut", ev_previewer_window_zoom_out },
+	{ "ViewZoomReset", ev_previewer_window_zoom_reset },
+	{ "PreviewPrint", ev_previewer_window_print },
+	{ "ViewBest_fit", NULL, NULL, "false", ev_previewer_window_zoom_best_fit },
+	{ "ViewPageWidth", NULL, NULL, "false", ev_previewer_window_zoom_page_width }
 };
 
-static const GtkActionEntry accel_entries[] = {
-	{ "Space", NULL, "", "space", NULL,
-	  G_CALLBACK (ev_previewer_window_scroll_forward) },
-	{ "ShiftSpace", NULL, "", "<shift>space", NULL,
-	  G_CALLBACK (ev_previewer_window_scroll_backward) },
-	{ "BackSpace", NULL, "", "BackSpace", NULL,
-	  G_CALLBACK (ev_previewer_window_scroll_backward) },
-	{ "ShiftBackSpace", NULL, "", "<shift>BackSpace", NULL,
-	  G_CALLBACK (ev_previewer_window_scroll_forward) },
-	{ "Return", NULL, "", "Return", NULL,
-	  G_CALLBACK (ev_previewer_window_scroll_forward) },
-	{ "ShiftReturn", NULL, "", "<shift>Return", NULL,
-	  G_CALLBACK (ev_previewer_window_scroll_backward) },
-	{ "p", GTK_STOCK_GO_UP, "", "p", NULL,
-	  G_CALLBACK (ev_previewer_window_previous_page) },
-	{ "n", GTK_STOCK_GO_DOWN, "", "n", NULL,
-	  G_CALLBACK (ev_previewer_window_next_page) },
-	{ "Plus", GTK_STOCK_ZOOM_IN, NULL, "plus", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_in) },
-	{ "CtrlEqual", GTK_STOCK_ZOOM_IN, NULL, "<control>equal", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_in) },
-	{ "Equal", GTK_STOCK_ZOOM_IN, NULL, "equal", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_in) },
-	{ "Minus", GTK_STOCK_ZOOM_OUT, NULL, "minus", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_out) },
-	{ "KpPlus", GTK_STOCK_ZOOM_IN, NULL, "KP_Add", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_in) },
-	{ "KpMinus", GTK_STOCK_ZOOM_OUT, NULL, "KP_Subtract", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_out) },
-	{ "CtrlKpPlus", GTK_STOCK_ZOOM_IN, NULL, "<control>KP_Add", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_in) },
-	{ "CtrlKpMinus", GTK_STOCK_ZOOM_OUT, NULL, "<control>KP_Subtract", NULL,
-	  G_CALLBACK (ev_previewer_window_zoom_out) },
-	{ "FocusPageSelector", NULL, "", "<control>l", NULL,
-	  G_CALLBACK (ev_previewer_window_focus_page_selector) }
+#if 0
+// These will be handled by GtkShortcut or manual key press
+#endif
 
-};
+// view_focus_changed removed
 
-static const GtkToggleActionEntry toggle_action_entries[] = {
-	{ "ViewBestFit", "xsi-zoom-fit-best-symbolic", N_("_Best Fit"), NULL,
-	  N_("Make the current document fill the window"),
-	  G_CALLBACK (ev_previewer_window_zoom_best_fit) },
-	{ "ViewPageWidth", "xsi-view-paged-symbolic", N_("Fit Page _Width"), NULL,
-	  N_("Make the current document fill the window width"),
-	  G_CALLBACK (ev_previewer_window_zoom_page_width) }
-};
-
-static gboolean
-view_focus_changed (GtkWidget         *widget,
-		    GdkEventFocus     *event,
-		    EvPreviewerWindow *window)
-{
-	if (window->accels_group)
-		gtk_action_group_set_sensitive (window->accels_group, event->in);
-
-	return FALSE;
-}
 
 static void
 view_sizing_mode_changed (EvDocumentModel   *model,
@@ -363,27 +182,15 @@ view_sizing_mode_changed (EvDocumentModel   *model,
 			  EvPreviewerWindow *window)
 {
 	EvSizingMode sizing_mode = ev_document_model_get_sizing_mode (model);
-	GtkAction   *action;
+	GAction     *action;
 
-	action = gtk_action_group_get_action (window->action_group, "ViewBestFit");
-	g_signal_handlers_block_by_func (action,
-					 G_CALLBACK (ev_previewer_window_zoom_best_fit),
-					 window);
-	gtk_toggle_action_set_active (GTK_TOGGLE_ACTION (action),
-				      sizing_mode == EV_SIZING_BEST_FIT);
-	g_signal_handlers_unblock_by_func (action,
-					   G_CALLBACK (ev_previewer_window_zoom_best_fit),
-					   window);
+	action = g_action_map_lookup_action (G_ACTION_MAP (window), "ViewBestFit");
+	g_simple_action_set_state (G_SIMPLE_ACTION (action),
+				   g_variant_new_boolean (sizing_mode == EV_SIZING_BEST_FIT));
 
-	action = gtk_action_group_get_action (window->action_group, "ViewPageWidth");
-	g_signal_handlers_block_by_func (action,
-					 G_CALLBACK (ev_previewer_window_zoom_page_width),
-					 window);
-	gtk_toggle_action_set_active (GTK_TOGGLE_ACTION (action),
-				      sizing_mode == EV_SIZING_FIT_WIDTH);
-	g_signal_handlers_unblock_by_func (action,
-					   G_CALLBACK (ev_previewer_window_zoom_page_width),
-					   window);
+	action = g_action_map_lookup_action (G_ACTION_MAP (window), "ViewPageWidth");
+	g_simple_action_set_state (G_SIMPLE_ACTION (action),
+				   g_variant_new_boolean (sizing_mode == EV_SIZING_FIT_WIDTH));
 }
 
 static void
@@ -398,21 +205,13 @@ ev_previewer_window_set_document (EvPreviewerWindow *window,
 	g_signal_connect (model, "notify::sizing-mode",
 			  G_CALLBACK (view_sizing_mode_changed),
 			  window);
-	ev_view_set_loading (window->view, FALSE);
-	gtk_action_group_set_sensitive (window->action_group, TRUE);
-	gtk_action_group_set_sensitive (window->accels_group, TRUE);
+	/* g_simple_action_group_set_enabled removed in GTK4 */
 }
 
 static void
 ev_previewer_window_connect_action_accelerators (EvPreviewerWindow *window)
 {
-	GList *actions;
-
-	gtk_ui_manager_ensure_update (window->ui_manager);
-
-	actions = gtk_action_group_list_actions (window->action_group);
-	g_list_foreach (actions, (GFunc)gtk_action_connect_accelerator, NULL);
-	g_list_free (actions);
+    // TODO: Implement GTK4 shortcuts
 }
 
 static void
@@ -435,16 +234,6 @@ ev_previewer_window_dispose (GObject *object)
 		window->action_group = NULL;
 	}
 
-	if (window->accels_group) {
-		g_object_unref (window->accels_group);
-		window->accels_group = NULL;
-	}
-
-	if (window->ui_manager) {
-		g_object_unref (window->ui_manager);
-		window->ui_manager = NULL;
-	}
-
 	if (window->print_settings) {
 		g_object_unref (window->print_settings);
 		window->print_settings = NULL;
@@ -453,11 +242,6 @@ ev_previewer_window_dispose (GObject *object)
 	if (window->print_page_setup) {
 		g_object_unref (window->print_page_setup);
 		window->print_page_setup = NULL;
-	}
-
-	if (window->printer) {
-		g_object_unref (window->printer);
-		window->printer = NULL;
 	}
 
 	if (window->print_job_title) {
@@ -496,26 +280,23 @@ ev_previewer_window_set_property (GObject      *object,
 	}
 }
 
-static gboolean
+#if 0
+static void
 _gtk_css_provider_load_from_resource (GtkCssProvider *provider,
-                                      const char     *resource_path,
-                                      GError        **error)
+                                      const char     *resource_path)
 {
-	GBytes  *data;
-	gboolean retval;
+	GBytes *data;
 
-	data = g_resources_lookup_data (resource_path, 0, error);
+	data = g_resources_lookup_data (resource_path, 0, NULL);
 	if (!data)
-			return FALSE;
+			return;
 
-	retval = gtk_css_provider_load_from_data (provider,
-											  g_bytes_get_data (data, NULL),
-											  g_bytes_get_size (data),
-											  error);
+	gtk_css_provider_load_from_data (provider,
+									  g_bytes_get_data (data, NULL),
+									  g_bytes_get_size (data));
 	g_bytes_unref (data);
-
-	return retval;
 }
+#endif
 
 static GObject *
 ev_previewer_window_constructor (GType                  type,
@@ -526,17 +307,14 @@ ev_previewer_window_constructor (GType                  type,
 	EvPreviewerWindow *window;
 	GtkWidget         *vbox;
 	GtkWidget         *toolbar;
-	GtkAction         *action;
-	GError            *error = NULL;
+	GtkWidget         *button;
 	gdouble            dpi;
-	GtkCssProvider    *css_provider;
 
 	object = G_OBJECT_CLASS (ev_previewer_window_parent_class)->constructor (type,
 										 n_construct_properties,
 										 construct_params);
 	window = EV_PREVIEWER_WINDOW (object);
-	gtk_widget_hide(GTK_WIDGET (window));
-	gtk_widget_realize (GTK_WIDGET (window));
+	gtk_widget_set_visible (GTK_WIDGET (window), FALSE);
 
 	dpi = get_screen_dpi (window);
 	ev_document_model_set_min_scale (window->model, MIN_SCALE * dpi / 72.0);
@@ -546,92 +324,64 @@ ev_previewer_window_constructor (GType                  type,
 				  G_CALLBACK (ev_previewer_window_set_document),
 				  window);
 
-	window->action_group = gtk_action_group_new ("PreviewerActions");
-	gtk_action_group_set_translation_domain (window->action_group, NULL);
-	gtk_action_group_add_actions (window->action_group, action_entries,
-				      G_N_ELEMENTS (action_entries),
-				      window);
-	gtk_action_group_add_toggle_actions (window->action_group, toggle_action_entries,
-					     G_N_ELEMENTS (toggle_action_entries),
-					     window);
-	gtk_action_group_set_sensitive (window->action_group, FALSE);
+	window->action_group = g_simple_action_group_new ();
+	g_action_map_add_action_entries (G_ACTION_MAP (window->action_group),
+				    action_entries,
+				    G_N_ELEMENTS (action_entries),
+				    window);
+	gtk_widget_insert_action_group (GTK_WIDGET (window), "prev", G_ACTION_GROUP (window->action_group));
+	/* g_simple_action_group_set_enabled removed in GTK4 */
 
-	action = g_object_new (EV_TYPE_PAGE_ACTION,
-			       "name", "PageSelector",
-			       "label", _("Page"),
-			       "tooltip", _("Select Page"),
-			       "icon_name", "text-x-generic",
-			       "visible_overflown", FALSE,
-			       NULL);
-	ev_page_action_set_model (EV_PAGE_ACTION (action), window->model);
-	g_signal_connect (action, "activate_link",
-			  G_CALLBACK (ev_previewer_window_action_page_activated),
-			  window);
-	gtk_action_group_add_action (window->action_group, action);
-	g_object_unref (action);
-
-	window->accels_group = gtk_action_group_new ("PreviewerAccelerators");
-	gtk_action_group_add_actions (window->accels_group, accel_entries,
-				      G_N_ELEMENTS (accel_entries),
-				      window);
-	gtk_action_group_set_sensitive (window->accels_group, FALSE);
-
-	css_provider = gtk_css_provider_new ();
-	_gtk_css_provider_load_from_resource (css_provider,
-										  "/org/x/reader/previewer/ui/xreader-previewer.css",
-										  &error);
-	g_assert_no_error (error);
-	gtk_style_context_add_provider_for_screen (gtk_widget_get_screen (GTK_WIDGET (window)),
-											   GTK_STYLE_PROVIDER (css_provider),
-											   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-	g_object_unref (css_provider);
-
-	window->ui_manager = gtk_ui_manager_new ();
-	gtk_ui_manager_insert_action_group (window->ui_manager,
-					    window->action_group, 0);
-	gtk_ui_manager_insert_action_group (window->ui_manager,
-					    window->accels_group, 1);
-	gtk_window_add_accel_group (GTK_WINDOW (window),
-				    gtk_ui_manager_get_accel_group (window->ui_manager));
-
-	gtk_ui_manager_add_ui_from_resource (window->ui_manager, "/org/x/reader/previewer/ui/previewer.xml", &error);
-	g_assert_no_error (error);
-
-	/* GTKUIManager connects actions accels only for menu items,
-	 * but not for tool items. See bug #612972.
-	 */
 	ev_previewer_window_connect_action_accelerators (window);
 
 	view_sizing_mode_changed (window->model, NULL, window);
 
-	vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+	vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+	gtk_window_set_child (GTK_WINDOW (window), vbox);
 
-	toolbar = gtk_ui_manager_get_widget (window->ui_manager, "/PreviewToolbar");
-	gtk_toolbar_set_icon_size ( GTK_TOOLBAR (toolbar), GTK_ICON_SIZE_SMALL_TOOLBAR);
-	gtk_box_pack_start (GTK_BOX (vbox), toolbar, FALSE, FALSE, 0);
-	gtk_widget_show (toolbar);
+	toolbar = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+	gtk_widget_add_css_class (toolbar, "toolbar");
+	gtk_box_append (GTK_BOX (vbox), toolbar);
 
-	window->swindow = gtk_scrolled_window_new (NULL, NULL);
+	/* Previous Page */
+	button = gtk_button_new_from_icon_name ("go-up-symbolic");
+	gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "prev.GoPreviousPage");
+	gtk_box_append (GTK_BOX (toolbar), button);
+
+	/* Next Page */
+	button = gtk_button_new_from_icon_name ("go-down-symbolic");
+	gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "prev.GoNextPage");
+	gtk_box_append (GTK_BOX (toolbar), button);
+
+	gtk_box_append (GTK_BOX (toolbar), gtk_separator_new (GTK_ORIENTATION_VERTICAL));
+
+	/* Zoom Out */
+	button = gtk_button_new_from_icon_name ("zoom-out-symbolic");
+	gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "prev.ViewZoomOut");
+	gtk_box_append (GTK_BOX (toolbar), button);
+
+	/* Zoom In */
+	button = gtk_button_new_from_icon_name ("zoom-in-symbolic");
+	gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "prev.ViewZoomIn");
+	gtk_box_append (GTK_BOX (toolbar), button);
+
+	gtk_box_append (GTK_BOX (toolbar), gtk_separator_new (GTK_ORIENTATION_VERTICAL));
+
+	/* Print */
+	button = gtk_button_new_from_icon_name ("printer-symbolic");
+	gtk_actionable_set_action_name (GTK_ACTIONABLE (button), "prev.PreviewPrint");
+	gtk_box_append (GTK_BOX (toolbar), button);
+
+	window->swindow = gtk_scrolled_window_new ();
 
 	window->view = EV_VIEW (ev_view_new ());
-	g_signal_connect_object (window->view, "focus_in_event",
-				 G_CALLBACK (view_focus_changed),
-				 window, 0);
-	g_signal_connect_object (window->view, "focus_out_event",
-				 G_CALLBACK (view_focus_changed),
-				 window, 0);
 	ev_view_set_model (window->view, window->model);
 	ev_document_model_set_continuous (window->model, FALSE);
 	ev_view_set_loading (window->view, TRUE);
 
-	gtk_container_add (GTK_CONTAINER (window->swindow), GTK_WIDGET (window->view));
-	gtk_widget_show (GTK_WIDGET (window->view));
-
-	gtk_box_pack_start (GTK_BOX (vbox), window->swindow, TRUE, TRUE, 0);
-	gtk_widget_show (window->swindow);
-
-	gtk_container_add (GTK_CONTAINER (window), vbox);
-	gtk_widget_show (vbox);
+	gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (window->swindow), GTK_WIDGET (window->view));
+	gtk_box_append (GTK_BOX (vbox), window->swindow);
+	gtk_widget_set_vexpand (window->swindow, TRUE);
 
 	return object;
 }

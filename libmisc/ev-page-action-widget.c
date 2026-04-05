@@ -145,6 +145,12 @@ page_changed_cb (EvDocumentModel    *model,
 	ev_page_action_widget_set_current_page (action_widget, new_page);
 }
 
+static void
+page_focus_out_cb (GtkEventControllerFocus *controller, EvPageActionWidget *action_widget)
+{
+	ev_page_action_widget_set_current_page (action_widget, ev_document_model_get_page (action_widget->doc_model));
+}
+
 static gboolean
 page_scroll_cb (GtkEventControllerScroll *scroll, gdouble dx, gdouble dy, EvPageActionWidget *action_widget)
 {
@@ -194,13 +200,8 @@ activate_cb (EvPageActionWidget *action_widget)
 		ev_page_action_widget_set_current_page (action_widget, current_page);
 }
 
-static gboolean
-focus_out_cb (EvPageActionWidget *action_widget)
-{
-	ev_page_action_widget_set_current_page (action_widget, ev_document_model_get_page (action_widget->doc_model));
+	// focus_out_cb removed and replaced by page_focus_out_cb for EventControllerFocus
 
-	return FALSE;
-}
 
 static void
 ev_page_action_widget_init (EvPageActionWidget *action_widget)
@@ -222,8 +223,10 @@ gtk_widget_add_controller(action_widget->entry, scroll);
 	g_signal_connect_swapped (action_widget->entry, "activate",
 				  G_CALLBACK (activate_cb),
 				  action_widget);
-	g_signal_connect_swapped (action_widget->entry, "focus-out-event",
-							  G_CALLBACK (focus_out_cb), action_widget);
+
+	GtkEventController *focus_ctrl = gtk_event_controller_focus_new ();
+	g_signal_connect (focus_ctrl, "leave", G_CALLBACK (page_focus_out_cb), action_widget);
+	gtk_widget_add_controller (action_widget->entry, focus_ctrl);
 
 
 

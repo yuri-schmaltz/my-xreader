@@ -195,7 +195,7 @@ if get_option('enable_debug')
     c_args += '-DEV_ENABLE_DEBUG'
 endif
 
-if get_option('epub')
+if get_option('epub') and webkit.found()
     c_args += '-DENABLE_EPUB'
 endif
 

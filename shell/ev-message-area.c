@@ -310,8 +310,8 @@ ev_message_area_set_image (EvMessageArea *area,
 }
 
 void
-ev_message_area_set_image_from_stock (EvMessageArea *area,
-				      const gchar   *icon_name)
+ev_message_area_set_image_from_icon_name (EvMessageArea *area,
+					  const gchar   *icon_name)
 {
 	g_return_if_fail (EV_IS_MESSAGE_AREA (area));
 	g_return_if_fail (icon_name != NULL);

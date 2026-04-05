@@ -105,7 +105,7 @@ main (gint argc, gchar **argv)
 	g_option_context_set_translation_domain (context, GETTEXT_PACKAGE);
 	g_option_context_add_main_entries (context, goption_options, GETTEXT_PACKAGE);
 
-	g_option_context_add_group (context, gtk_get_option_group (TRUE));
+
 
 	if (!g_option_context_parse (context, &argc, &argv, &error)) {
 		g_warning ("Error parsing command line arguments: %s", error->message);
@@ -139,13 +139,14 @@ main (gint argc, gchar **argv)
 	window = ev_previewer_window_new (model);
 	ev_previewer_window_set_source_file (EV_PREVIEWER_WINDOW (window), filename);
 	ev_previewer_window_set_print_settings (EV_PREVIEWER_WINDOW (window), print_settings);
-	g_signal_connect (window, "delete-event", G_CALLBACK (gtk_main_quit), NULL);
-	g_signal_connect (window, "destroy", G_CALLBACK (gtk_main_quit), NULL);
+	GMainLoop *loop = g_main_loop_new (NULL, FALSE);
+	g_signal_connect_swapped (window, "destroy", G_CALLBACK (g_main_loop_quit), loop);
 	gtk_widget_show (window);
 
 	ev_previewer_load_document (filename, model);
 
-	gtk_main ();
+	g_main_loop_run (loop);
+	g_main_loop_unref (loop);
 
 	if (unlink_temp_file)
 		ev_previewer_unlink_tempfile (filename);

@@ -166,7 +166,7 @@ ev_progress_message_area_new (const gchar *stock_id,
 		va_end (args);
 	}
 
-	ev_message_area_set_image_from_stock (EV_MESSAGE_AREA (widget), stock_id);
+	ev_message_area_set_image_from_icon_name (EV_MESSAGE_AREA (widget), stock_id);
 
 	return widget;
 }
