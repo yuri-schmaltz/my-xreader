@@ -41,7 +41,6 @@
 #include <gio/gio.h>
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
-#include <libxapp/xapp-favorites.h>
 
 #include "eggfindbar.h"
 
@@ -174,8 +173,6 @@ struct _EvWindowPrivate {
     GtkBuilder       *builder;
     GtkRecentManager *recent_manager;
     guint             recent_ui_id;
-    XAppFavorites    *favorites;
-    guint             favorites_ui_id;
     guint             bookmarks_ui_id;
 
     /* Popup view */
@@ -4825,12 +4822,6 @@ ev_window_dispose (GObject *object)
         priv->recent_manager = NULL;
     }
 
-    if (priv->favorites) {
-        g_signal_handlers_disconnect_by_func (priv->favorites,
-                NULL, /* removed */
-                window);
-        priv->favorites = NULL;
-    }
 
     if (priv->settings) {
         g_object_unref (priv->settings);

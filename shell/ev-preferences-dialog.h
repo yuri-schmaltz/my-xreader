@@ -1,8 +1,7 @@
 #ifndef __EV_PREFERENCES_DIALOG_H__
 #define __EV_PREFERENCES_DIALOG_H__
 
-#include <libxapp/xapp-preferences-window.h>
-
+#include <gtk/gtk.h>
 #include "ev-window.h"
 
 G_BEGIN_DECLS

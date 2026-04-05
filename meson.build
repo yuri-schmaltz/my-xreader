@@ -40,7 +40,6 @@ po_dir = join_paths(meson.source_root(), 'po')
 # dependencies
 cairo = dependency('cairo', version: '>= 1.14.0')
 gio = dependency('gio-2.0', version: '>= 2.36.0')
-xapp = dependency('xapp', version: '>= 1.0.0')
 glib_version = '2.36.0'
 glib = dependency('glib-2.0', version: '>= ' + glib_version)
 gmodule = dependency('gmodule-2.0')

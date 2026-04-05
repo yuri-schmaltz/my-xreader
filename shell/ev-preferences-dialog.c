@@ -28,11 +28,11 @@ static GtkWidget *preferences_dialog = NULL;
 
 #define EV_TYPE_PREFERENCES_DIALOG    (ev_preferences_dialog_get_type())
 
-G_DECLARE_FINAL_TYPE(EvPreferencesDialog, ev_preferences_dialog, EV, PREFERENCES_DIALOG, XAppPreferencesWindow)
+G_DECLARE_FINAL_TYPE(EvPreferencesDialog, ev_preferences_dialog, EV, PREFERENCES_DIALOG, GtkWindow)
 
 struct _EvPreferencesDialog
 {
-    XAppPreferencesWindow  parent_instance;
+    GtkWindow  parent_instance;
 
     GSettings             *default_settings;
     GSettings             *toolbar_settings;
@@ -49,7 +49,7 @@ struct _EvPreferencesDialog
     GtkWidget             *show_zoom_action_switch;
 };
 
-G_DEFINE_TYPE(EvPreferencesDialog, ev_preferences_dialog, XAPP_TYPE_PREFERENCES_WINDOW)
+G_DEFINE_TYPE(EvPreferencesDialog, ev_preferences_dialog, GTK_TYPE_WINDOW)
 
 static void
 ev_preferences_dialog_dispose(GObject *object)
@@ -126,20 +126,24 @@ setup_editor_page(EvPreferencesDialog *dlg)
                      "active",
                      G_SETTINGS_BIND_GET | G_SETTINGS_BIND_SET);
 
-    xapp_preferences_window_add_page(XAPP_PREFERENCES_WINDOW(dlg), dlg->toolbar_page, "toolbar", _("Toolbar"));
+    gtk_window_set_child(GTK_WINDOW(dlg), dlg->toolbar_page);
 }
 
 static void
 setup_buttons(EvPreferencesDialog *dlg)
 {
+    GtkWidget *header;
     GtkWidget *button;
 
+    header = gtk_header_bar_new();
+    gtk_window_set_titlebar(GTK_WINDOW(dlg), header);
+
     button = gtk_button_new_with_label(_("Help"));
-    xapp_preferences_window_add_button(XAPP_PREFERENCES_WINDOW(dlg), button, GTK_PACK_START);
+    gtk_header_bar_pack_start(GTK_HEADER_BAR(header), button);
     g_signal_connect(button, "clicked", G_CALLBACK(help_button_clicked), dlg);
 
     button = gtk_button_new_with_label(_("Close"));
-    xapp_preferences_window_add_button(XAPP_PREFERENCES_WINDOW(dlg), button, GTK_PACK_END);
+    gtk_header_bar_pack_end(GTK_HEADER_BAR(header), button);
     g_signal_connect(button, "clicked", G_CALLBACK(close_button_clicked), dlg);
 }
 
