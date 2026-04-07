@@ -132,6 +132,7 @@ struct _EvWindowPrivate {
     GtkWidget *menubar;
     GtkWidget *toolbar;
     GtkWidget *toolbar_revealer;
+    GtkWidget *notebook;
     GtkWidget *hpaned;
     GtkWidget *view_box;
     GtkWidget *sidebar;
@@ -1236,6 +1237,19 @@ ev_window_setup_document (EvWindow *ev_window)
 
     ev_window_title_set_document (ev_window->priv->title, document);
     ev_window_title_set_uri (ev_window->priv->title, ev_window->priv->uri);
+
+    /* Update notebook tab label */
+    if (ev_window->priv->notebook && ev_window->priv->hpaned) {
+        gchar *basename = g_filename_display_basename (ev_window->priv->uri);
+        GtkWidget *tab_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+        GtkWidget *label = gtk_label_new (basename);
+        gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+        gtk_label_set_max_width_chars (GTK_LABEL (label), 20);
+        gtk_box_append (GTK_BOX (tab_box), label);
+        gtk_notebook_set_tab_label (GTK_NOTEBOOK (ev_window->priv->notebook),
+                                   ev_window->priv->hpaned, tab_box);
+        g_free (basename);
+    }
 
     ev_window_ensure_settings (ev_window);
     ev_window_setup_action_sensitivity (ev_window);
@@ -6121,6 +6135,15 @@ ev_window_init (EvWindow *ev_window)
     gtk_revealer_set_child (GTK_REVEALER (ev_window->priv->toolbar_revealer), ev_window->priv->toolbar);
     gtk_widget_show (ev_window->priv->toolbar);
 
+    /* Notebook para abas */
+    ev_window->priv->notebook = gtk_notebook_new ();
+    gtk_notebook_set_scrollable (GTK_NOTEBOOK (ev_window->priv->notebook), TRUE);
+    gtk_notebook_set_show_tabs (GTK_NOTEBOOK (ev_window->priv->notebook), FALSE);
+    gtk_notebook_set_show_border (GTK_NOTEBOOK (ev_window->priv->notebook), FALSE);
+    gtk_widget_set_vexpand (ev_window->priv->notebook, TRUE);
+    gtk_box_append (GTK_BOX (ev_window->priv->main_box), ev_window->priv->notebook);
+    gtk_widget_show (ev_window->priv->notebook);
+
     ev_window->priv->hpaned = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);
 
     g_signal_connect (ev_window->priv->hpaned,
@@ -6129,7 +6152,7 @@ ev_window_init (EvWindow *ev_window)
             ev_window);
 
     gtk_paned_set_position (GTK_PANED (ev_window->priv->hpaned), SIDEBAR_DEFAULT_SIZE);
-    gtk_box_append (GTK_BOX (ev_window->priv->main_box), ev_window->priv->hpaned);
+    gtk_notebook_append_page (GTK_NOTEBOOK (ev_window->priv->notebook), ev_window->priv->hpaned, gtk_label_new (_("New Document")));
     gtk_widget_show (ev_window->priv->hpaned);
 
     ev_window->priv->sidebar = ev_sidebar_new ();

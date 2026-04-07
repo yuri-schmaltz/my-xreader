@@ -49,7 +49,11 @@ static const gchar *
 backends_dir (void)
 {
 	if (!backendsdir) {
-		backendsdir = g_strdup (EV_BACKENDSDIR);
+		const gchar *env_dir = g_getenv ("XREADER_BACKENDS_DIR");
+		if (env_dir != NULL)
+			backendsdir = g_strdup (env_dir);
+		else
+			backendsdir = g_strdup (EV_BACKENDSDIR);
 	}
 
 	return backendsdir;
