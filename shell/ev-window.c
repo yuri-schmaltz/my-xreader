@@ -124,6 +124,48 @@ typedef enum {
     EV_MENUBAR_TOGGLE
 } EvMenubarAction;
 
+
+/* --- Multi-tab support --- */
+typedef struct _EvTab EvTab;
+struct _EvTab {
+    GtkWidget       *view_box;
+    GtkWidget       *scrolled_window;
+    GtkWidget       *view;
+    EvDocumentModel *model;
+    EvDocument      *document;
+    EvHistory       *history;
+    EvMetadata      *metadata;
+    EvBookmarks     *bookmarks;
+    gchar           *uri;
+    gchar           *local_uri;
+    glong            uri_mtime;
+    gboolean         in_reload;
+    EvFileMonitor   *monitor;
+    guint            setup_document_idle;
+    EvLinkDest      *dest;
+    gchar           *search_string;
+    EvWindowRunMode  window_mode;
+    EvJob           *load_job;
+    EvJob           *reload_job;
+    EvJob           *thumbnail_job;
+    EvJob           *save_job;
+    EvJob           *find_job;
+    EvWindowPageMode page_mode;
+};
+
+/* Forward declarations for tab management */
+static GtkWidget * ev_window_create_tab_label (EvWindow *ev_window, const gchar *title, GtkWidget *tab_page);
+static EvTab * ev_window_create_new_tab (EvWindow *ev_window, const gchar *title);
+static void ev_window_tab_close_button_clicked (GtkButton *button, gpointer user_data);
+static void ev_window_close_tab_by_page (EvWindow *ev_window, GtkWidget *page_widget);
+static void ev_window_update_notebook_visibility (EvWindow *ev_window);
+static void ev_window_notebook_switch_page (GtkNotebook *notebook, GtkWidget *page, guint page_num, EvWindow *ev_window);
+static GSettings * ev_window_ensure_settings (EvWindow *ev_window);
+static void ev_window_cmd_new_tab (GSimpleAction *action, GVariant *parameter, gpointer user_data);
+static void ev_window_cmd_close_tab (GSimpleAction *action, GVariant *parameter, gpointer user_data);
+static void ev_window_cmd_next_tab (GSimpleAction *action, GVariant *parameter, gpointer user_data);
+static void ev_window_cmd_prev_tab (GSimpleAction *action, GVariant *parameter, gpointer user_data);
+
 struct _EvWindowPrivate {
     /* UI */
     EvChrome chrome;
@@ -134,6 +176,8 @@ struct _EvWindowPrivate {
     GtkWidget *toolbar_revealer;
     GtkWidget *notebook;
     GtkWidget *hpaned;
+    GList    *tabs;
+    EvTab    *active_tab;
     GtkWidget *view_box;
     GtkWidget *sidebar;
     GtkWidget *find_bar;
@@ -1238,17 +1282,24 @@ ev_window_setup_document (EvWindow *ev_window)
     ev_window_title_set_document (ev_window->priv->title, document);
     ev_window_title_set_uri (ev_window->priv->title, ev_window->priv->uri);
 
-    /* Update notebook tab label */
-    if (ev_window->priv->notebook && ev_window->priv->hpaned) {
+    /* Update notebook tab label for the active tab */
+    if (ev_window->priv->notebook && ev_window->priv->active_tab) {
         gchar *basename = g_filename_display_basename (ev_window->priv->uri);
-        GtkWidget *tab_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
-        GtkWidget *label = gtk_label_new (basename);
-        gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
-        gtk_label_set_max_width_chars (GTK_LABEL (label), 20);
-        gtk_box_append (GTK_BOX (tab_box), label);
+        GtkWidget *tab_label = ev_window_create_tab_label (ev_window, basename,
+                ev_window->priv->active_tab->view_box);
+        GtkWidget *close_btn = gtk_widget_get_last_child (tab_label);
+        g_signal_connect (close_btn, "clicked",
+                G_CALLBACK (ev_window_tab_close_button_clicked), ev_window);
         gtk_notebook_set_tab_label (GTK_NOTEBOOK (ev_window->priv->notebook),
-                                   ev_window->priv->hpaned, tab_box);
+                ev_window->priv->active_tab->view_box, tab_label);
         g_free (basename);
+
+        /* Sync document state to active tab struct */
+        ev_window->priv->active_tab->document = ev_window->priv->document;
+        ev_window->priv->active_tab->uri = ev_window->priv->uri;
+        ev_window->priv->active_tab->metadata = ev_window->priv->metadata;
+        ev_window->priv->active_tab->bookmarks = ev_window->priv->bookmarks;
+        ev_window->priv->active_tab->page_mode = ev_window->priv->page_mode;
     }
 
     ev_window_ensure_settings (ev_window);
@@ -1823,6 +1874,28 @@ ev_window_open_uri (EvWindow       *ev_window,
 {
     GFile *source_file;
 
+    /* If a document is already loaded, open in a new tab */
+    if (ev_window->priv->document != NULL && uri != NULL) {
+        EvTab *new_tab = ev_window_create_new_tab (ev_window, NULL);
+
+        /* Update priv pointers to the new tab */
+        ev_window->priv->view = new_tab->view;
+        ev_window->priv->scrolled_window = new_tab->scrolled_window;
+        ev_window->priv->view_box = new_tab->view_box;
+        ev_window->priv->model = new_tab->model;
+        ev_window->priv->document = NULL;
+        ev_window->priv->uri = NULL;
+        ev_window->priv->metadata = NULL;
+        ev_window->priv->bookmarks = NULL;
+        ev_window->priv->history = new_tab->history;
+        ev_window->priv->in_reload = FALSE;
+        ev_window->priv->page_mode = PAGE_MODE_DOCUMENT;
+
+        /* Reconnect sidebar */
+        ev_sidebar_set_model (EV_SIDEBAR (ev_window->priv->sidebar),
+                              new_tab->model);
+    }
+
     ev_window->priv->in_reload = FALSE;
 
     if (ev_window->priv->uri &&
@@ -1845,6 +1918,10 @@ ev_window_open_uri (EvWindow       *ev_window,
     if (ev_window->priv->uri)
         g_free (ev_window->priv->uri);
     ev_window->priv->uri = g_strdup (uri);
+
+    /* Sync URI to active tab */
+    if (ev_window->priv->active_tab)
+        ev_window->priv->active_tab->uri = ev_window->priv->uri;
 
     if (ev_window->priv->metadata)
         g_object_unref (ev_window->priv->metadata);
@@ -3666,28 +3743,11 @@ ev_window_cmd_view_presentation (GSimpleAction *action,
 static void
 ev_window_setup_gtk_settings (EvWindow *window)
 {
-    GtkSettings *settings;
-    gchar       *menubar_accel_accel;
-
-    settings = gtk_settings_get_default ();
-
-    g_object_get (settings,
-            "gtk-menu-bar-accel", &menubar_accel_accel,
-            NULL);
-    if (menubar_accel_accel != NULL && menubar_accel_accel[0] != '\0') {
-        gtk_accelerator_parse (menubar_accel_accel,
-                &window->priv->menubar_accel_keyval,
-                &window->priv->menubar_accel_modifier);
-        if (window->priv->menubar_accel_keyval == 0) {
-            g_warning ("Failed to parse menu bar accelerator '%s'\n",
-                    menubar_accel_accel);
-        }
-    } else {
-        window->priv->menubar_accel_keyval = 0;
-        window->priv->menubar_accel_modifier = 0;
-    }
-
-    g_free (menubar_accel_accel);
+    /* GTK4: "gtk-menu-bar-accel" property no longer exists.
+     * Use F10 as the default menubar accelerator. */
+    gtk_accelerator_parse ("F10",
+            &window->priv->menubar_accel_keyval,
+            &window->priv->menubar_accel_modifier);
 }
 
 static void
@@ -5024,6 +5084,10 @@ static const GActionEntry entries[] = {
     { "FileProperties", ev_window_cmd_file_properties },
     { "FileCloseAllWindows", ev_window_cmd_file_close_all_windows },
     { "FileCloseWindow", ev_window_cmd_file_close_window },
+    { "TabNew", ev_window_cmd_new_tab },
+    { "TabClose", ev_window_cmd_close_tab },
+    { "TabNext", ev_window_cmd_next_tab },
+    { "TabPrev", ev_window_cmd_prev_tab },
     { "EditCopy", ev_window_cmd_edit_copy },
     { "EditSelectAll", ev_window_cmd_edit_select_all },
     { "EditFind", ev_window_cmd_edit_find },
@@ -6033,13 +6097,262 @@ ev_window_drop_cb (GtkDropTarget *target,
     return TRUE;
 }
 
+
+/* --- Tab management --- */
+
+static void
+ev_window_update_notebook_visibility (EvWindow *ev_window)
+{
+    gint n_pages = gtk_notebook_get_n_pages (GTK_NOTEBOOK (ev_window->priv->notebook));
+    gtk_notebook_set_show_tabs (GTK_NOTEBOOK (ev_window->priv->notebook), n_pages > 1);
+}
+
+static GtkWidget *
+ev_window_create_tab_label (EvWindow *ev_window, const gchar *title, GtkWidget *tab_page)
+{
+    GtkWidget *box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+    GtkWidget *label = gtk_label_new (title ? title : _("New Document"));
+    GtkWidget *close_btn = gtk_button_new_from_icon_name ("window-close-symbolic");
+
+    gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+    gtk_label_set_max_width_chars (GTK_LABEL (label), 20);
+    gtk_widget_set_hexpand (label, TRUE);
+    gtk_button_set_has_frame (GTK_BUTTON (close_btn), FALSE);
+    gtk_widget_set_valign (close_btn, GTK_ALIGN_CENTER);
+
+    /* Store a reference to the page widget so close button knows which tab to close */
+    g_object_set_data (G_OBJECT (close_btn), "tab-page", tab_page);
+    g_object_set_data (G_OBJECT (box), "tab-label", label);
+
+    gtk_box_append (GTK_BOX (box), label);
+    gtk_box_append (GTK_BOX (box), close_btn);
+
+    return box;
+}
+
+static void
+ev_window_close_tab_by_page (EvWindow *ev_window, GtkWidget *page_widget)
+{
+    GList *l;
+    EvTab *tab_to_remove = NULL;
+
+    for (l = ev_window->priv->tabs; l; l = l->next) {
+        EvTab *tab = (EvTab *) l->data;
+        if (tab->view_box == page_widget) {
+            tab_to_remove = tab;
+            break;
+        }
+    }
+
+    if (!tab_to_remove)
+        return;
+
+    gint page_num = gtk_notebook_page_num (GTK_NOTEBOOK (ev_window->priv->notebook), page_widget);
+    if (page_num < 0)
+        return;
+
+    ev_window->priv->tabs = g_list_remove (ev_window->priv->tabs, tab_to_remove);
+
+    /* Free tab resources */
+    g_clear_object (&tab_to_remove->model);
+    g_clear_object (&tab_to_remove->document);
+    g_clear_object (&tab_to_remove->history);
+    g_clear_object (&tab_to_remove->metadata);
+    g_clear_object (&tab_to_remove->bookmarks);
+    g_clear_object (&tab_to_remove->monitor);
+    g_free (tab_to_remove->uri);
+    g_free (tab_to_remove->local_uri);
+    g_free (tab_to_remove->search_string);
+    if (tab_to_remove->load_job) ev_job_cancel (tab_to_remove->load_job);
+    if (tab_to_remove->find_job) ev_job_cancel (tab_to_remove->find_job);
+    g_free (tab_to_remove);
+
+    gtk_notebook_remove_page (GTK_NOTEBOOK (ev_window->priv->notebook), page_num);
+
+    if (g_list_length (ev_window->priv->tabs) == 0) {
+        gtk_window_destroy (GTK_WINDOW (ev_window));
+        return;
+    }
+
+    ev_window_update_notebook_visibility (ev_window);
+}
+
+static void
+ev_window_tab_close_button_clicked (GtkButton *button, gpointer user_data)
+{
+    EvWindow *ev_window = EV_WINDOW (user_data);
+    GtkWidget *page = g_object_get_data (G_OBJECT (button), "tab-page");
+    ev_window_close_tab_by_page (ev_window, page);
+}
+
+static void
+ev_window_notebook_switch_page (GtkNotebook *notebook, GtkWidget *page,
+                                guint page_num, EvWindow *ev_window)
+{
+    GList *l;
+
+    for (l = ev_window->priv->tabs; l; l = l->next) {
+        EvTab *tab = (EvTab *) l->data;
+        if (tab->view_box == page) {
+            ev_window->priv->active_tab = tab;
+
+            /* Update priv pointers to current tab */
+            ev_window->priv->view = tab->view;
+            ev_window->priv->scrolled_window = tab->scrolled_window;
+            ev_window->priv->model = tab->model;
+            ev_window->priv->document = tab->document;
+            ev_window->priv->uri = tab->uri;
+            ev_window->priv->metadata = tab->metadata;
+            ev_window->priv->bookmarks = tab->bookmarks;
+            ev_window->priv->history = tab->history;
+            ev_window->priv->page_mode = tab->page_mode;
+
+            /* Reconnect sidebar to new model */
+            ev_sidebar_set_model (EV_SIDEBAR (ev_window->priv->sidebar),
+                                  tab->model);
+
+            /* Update window title */
+            if (tab->uri) {
+                ev_window_title_set_uri (ev_window->priv->title, tab->uri);
+            }
+            if (tab->document) {
+                ev_window_title_set_document (ev_window->priv->title, tab->document);
+            }
+
+            ev_window_setup_action_sensitivity (ev_window);
+            break;
+        }
+    }
+}
+
+static EvTab *
+ev_window_create_new_tab (EvWindow *ev_window, const gchar *title)
+{
+    EvTab *tab = g_new0 (EvTab, 1);
+    guint page_cache_mb;
+
+    tab->model = ev_document_model_new ();
+    tab->page_mode = PAGE_MODE_DOCUMENT;
+    tab->window_mode = EV_WINDOW_MODE_NORMAL;
+
+    tab->view_box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    gtk_widget_set_vexpand (tab->view_box, TRUE);
+    gtk_widget_set_hexpand (tab->view_box, TRUE);
+
+    tab->scrolled_window = GTK_WIDGET (g_object_new (GTK_TYPE_SCROLLED_WINDOW, NULL));
+    gtk_widget_set_vexpand (tab->scrolled_window, TRUE);
+    gtk_box_append (GTK_BOX (tab->view_box), tab->scrolled_window);
+    gtk_widget_show (tab->scrolled_window);
+
+    tab->view = ev_view_new ();
+    page_cache_mb = g_settings_get_uint (ev_window_ensure_settings (ev_window),
+                                          GS_PAGE_CACHE_SIZE);
+    ev_view_set_page_cache_size (EV_VIEW (tab->view),
+                                  page_cache_mb * 1024 * 1024);
+    ev_view_set_model (EV_VIEW (tab->view), tab->model);
+
+    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (tab->scrolled_window), tab->view);
+    gtk_widget_show (tab->view);
+    gtk_widget_show (tab->view_box);
+
+    tab->history = ev_history_new (tab->model);
+
+    /* Connect view signals */
+    g_signal_connect_swapped (tab->view, "external-link",
+                              G_CALLBACK (view_external_link_cb),
+                              ev_window);
+
+    /* Tab label */
+    GtkWidget *tab_label = ev_window_create_tab_label (ev_window, title, tab->view_box);
+    GtkWidget *close_btn = gtk_widget_get_last_child (tab_label);
+    g_signal_connect (close_btn, "clicked",
+                      G_CALLBACK (ev_window_tab_close_button_clicked), ev_window);
+
+    gint page_num = gtk_notebook_append_page (GTK_NOTEBOOK (ev_window->priv->notebook),
+                                               tab->view_box, tab_label);
+    gtk_notebook_set_tab_reorderable (GTK_NOTEBOOK (ev_window->priv->notebook),
+                                      tab->view_box, TRUE);
+
+    ev_window->priv->tabs = g_list_append (ev_window->priv->tabs, tab);
+    ev_window->priv->active_tab = tab;
+
+    /* Switch to the new tab */
+    gtk_notebook_set_current_page (GTK_NOTEBOOK (ev_window->priv->notebook), page_num);
+
+    ev_window_update_notebook_visibility (ev_window);
+
+    return tab;
+}
+
+static void
+ev_window_cmd_new_tab (GSimpleAction *action,
+                       GVariant      *parameter,
+                       gpointer       user_data)
+{
+    EvWindow  *window = EV_WINDOW (user_data);
+    GtkWidget *chooser;
+
+    chooser = gtk_file_chooser_dialog_new (_("Open Document in New Tab"),
+            GTK_WINDOW (window),
+            GTK_FILE_CHOOSER_ACTION_OPEN,
+            _("_Cancel"), GTK_RESPONSE_CANCEL,
+            _("_Open"), GTK_RESPONSE_OK,
+            NULL);
+
+    ev_document_factory_add_filters (chooser, NULL);
+    gtk_file_chooser_set_select_multiple (GTK_FILE_CHOOSER (chooser), FALSE);
+
+    ev_window_file_chooser_restore_folder (window,
+            GTK_FILE_CHOOSER (chooser),
+            NULL,
+            G_USER_DIRECTORY_DOCUMENTS);
+
+    g_signal_connect (chooser, "response",
+            G_CALLBACK (file_open_dialog_response_cb),
+            window);
+
+    gtk_widget_show (chooser);
+}
+
+static void
+ev_window_cmd_close_tab (GSimpleAction *action,
+                         GVariant      *parameter,
+                         gpointer       user_data)
+{
+    EvWindow *ev_window = EV_WINDOW (user_data);
+    gint current = gtk_notebook_get_current_page (GTK_NOTEBOOK (ev_window->priv->notebook));
+
+    if (current < 0)
+        return;
+
+    GtkWidget *page = gtk_notebook_get_nth_page (GTK_NOTEBOOK (ev_window->priv->notebook), current);
+    ev_window_close_tab_by_page (ev_window, page);
+}
+
+static void
+ev_window_cmd_next_tab (GSimpleAction *action,
+                        GVariant      *parameter,
+                        gpointer       user_data)
+{
+    EvWindow *ev_window = EV_WINDOW (user_data);
+    gtk_notebook_next_page (GTK_NOTEBOOK (ev_window->priv->notebook));
+}
+
+static void
+ev_window_cmd_prev_tab (GSimpleAction *action,
+                        GVariant      *parameter,
+                        gpointer       user_data)
+{
+    EvWindow *ev_window = EV_WINDOW (user_data);
+    gtk_notebook_prev_page (GTK_NOTEBOOK (ev_window->priv->notebook));
+}
+
 static void
 ev_window_init (EvWindow *ev_window)
 {
     GError *error = NULL;
     GtkWidget *sidebar_widget;
     GtkStyleContext *context;
-    guint page_cache_mb;
 #ifdef ENABLE_DBUS
     GDBusConnection *connection;
     static gint window_id = 0;
@@ -6122,6 +6435,19 @@ ev_window_init (EvWindow *ev_window)
     gtk_widget_insert_action_group (GTK_WIDGET (ev_window), "attachment-popup", G_ACTION_GROUP (attachment_popup_group));
     g_object_unref (attachment_popup_group);
 
+    /* Tab keyboard accelerators */
+    {
+        GtkApplication *app = GTK_APPLICATION (g_application_get_default ());
+        const gchar *accel_new_tab[]  = { "<Primary>t", NULL };
+        const gchar *accel_close_tab[] = { "<Primary>w", NULL };
+        const gchar *accel_next_tab[] = { "<Primary>Tab", "<Primary>Page_Down", NULL };
+        const gchar *accel_prev_tab[] = { "<Primary><Shift>Tab", "<Primary>Page_Up", NULL };
+        gtk_application_set_accels_for_action (app, "win.TabNew", accel_new_tab);
+        gtk_application_set_accels_for_action (app, "win.TabClose", accel_close_tab);
+        gtk_application_set_accels_for_action (app, "win.TabNext", accel_next_tab);
+        gtk_application_set_accels_for_action (app, "win.TabPrev", accel_prev_tab);
+    }
+
     ev_window->priv->builder = gtk_builder_new_from_resource ("/org/x/reader/shell/ui/xreader-menus.ui");
     GMenuModel *menubar = G_MENU_MODEL (gtk_builder_get_object (ev_window->priv->builder, "menubar"));
     gtk_application_set_menubar (GTK_APPLICATION (g_application_get_default ()), menubar);
@@ -6135,24 +6461,15 @@ ev_window_init (EvWindow *ev_window)
     gtk_revealer_set_child (GTK_REVEALER (ev_window->priv->toolbar_revealer), ev_window->priv->toolbar);
     gtk_widget_show (ev_window->priv->toolbar);
 
-    /* Notebook para abas */
-    ev_window->priv->notebook = gtk_notebook_new ();
-    gtk_notebook_set_scrollable (GTK_NOTEBOOK (ev_window->priv->notebook), TRUE);
-    gtk_notebook_set_show_tabs (GTK_NOTEBOOK (ev_window->priv->notebook), FALSE);
-    gtk_notebook_set_show_border (GTK_NOTEBOOK (ev_window->priv->notebook), FALSE);
-    gtk_widget_set_vexpand (ev_window->priv->notebook, TRUE);
-    gtk_box_append (GTK_BOX (ev_window->priv->main_box), ev_window->priv->notebook);
-    gtk_widget_show (ev_window->priv->notebook);
-
+    /* Paned: sidebar (shared) | notebook (tabs) */
     ev_window->priv->hpaned = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);
-
     g_signal_connect (ev_window->priv->hpaned,
             "notify::position",
             G_CALLBACK (ev_window_sidebar_visibility_changed_cb),
             ev_window);
-
     gtk_paned_set_position (GTK_PANED (ev_window->priv->hpaned), SIDEBAR_DEFAULT_SIZE);
-    gtk_notebook_append_page (GTK_NOTEBOOK (ev_window->priv->notebook), ev_window->priv->hpaned, gtk_label_new (_("New Document")));
+    gtk_widget_set_vexpand (ev_window->priv->hpaned, TRUE);
+    gtk_box_append (GTK_BOX (ev_window->priv->main_box), ev_window->priv->hpaned);
     gtk_widget_show (ev_window->priv->hpaned);
 
     ev_window->priv->sidebar = ev_sidebar_new ();
@@ -6243,35 +6560,45 @@ ev_window_init (EvWindow *ev_window)
     ev_sidebar_add_page (EV_SIDEBAR (ev_window->priv->sidebar),
             sidebar_widget);
 
-    ev_window->priv->view_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-    ev_window->priv->scrolled_window =
-            GTK_WIDGET (g_object_new (GTK_TYPE_SCROLLED_WINDOW,
-                    NULL));
-    gtk_box_append (GTK_BOX (ev_window->priv->view_box),
-            ev_window->priv->scrolled_window);
-    gtk_widget_show (ev_window->priv->scrolled_window);
-
+    /* Notebook for tabs - placed as end child of hpaned */
+    ev_window->priv->notebook = gtk_notebook_new ();
+    gtk_notebook_set_scrollable (GTK_NOTEBOOK (ev_window->priv->notebook), TRUE);
+    gtk_notebook_set_show_tabs (GTK_NOTEBOOK (ev_window->priv->notebook), FALSE);
+    gtk_notebook_set_show_border (GTK_NOTEBOOK (ev_window->priv->notebook), FALSE);
+    gtk_widget_set_vexpand (ev_window->priv->notebook, TRUE);
+    gtk_widget_set_hexpand (ev_window->priv->notebook, TRUE);
     gtk_paned_set_end_child (GTK_PANED (ev_window->priv->hpaned),
-            ev_window->priv->view_box);
-    gtk_widget_show (ev_window->priv->view_box);
+            ev_window->priv->notebook);
+    gtk_widget_show (ev_window->priv->notebook);
 
-    ev_window->priv->view = ev_view_new ();
+    g_signal_connect (ev_window->priv->notebook, "switch-page",
+            G_CALLBACK (ev_window_notebook_switch_page), ev_window);
 
-#if ENABLE_EPUB /*The webview, we won't add it now but it will replace the xreader-view if a web(epub) document is encountered.*/
+    /* Create initial tab - reuse the model already created in this init */
+    {
+        EvTab *initial_tab = ev_window_create_new_tab (ev_window, NULL);
+        /* Replace the tab's own model with the one init already created,
+         * so that sidebar/history/etc. all share the same model. */
+        g_object_unref (initial_tab->model);
+        initial_tab->model = ev_window->priv->model;
+        ev_view_set_model (EV_VIEW (initial_tab->view), ev_window->priv->model);
+
+        ev_window->priv->view_box = initial_tab->view_box;
+        ev_window->priv->scrolled_window = initial_tab->scrolled_window;
+        ev_window->priv->view = initial_tab->view;
+    }
+
+    /* Note: ev_view_new() is now called inside ev_window_create_new_tab */
+    /* The EvView from the initial tab is referenced via priv->view */
+
+#if ENABLE_EPUB
     ev_window->priv->webview = ev_web_view_new();
     ev_web_view_set_model(EV_WEB_VIEW(ev_window->priv->webview),ev_window->priv->model);
 #endif
-    page_cache_mb = g_settings_get_uint (ev_window_ensure_settings (ev_window),
-            GS_PAGE_CACHE_SIZE);
-    ev_view_set_page_cache_size (EV_VIEW (ev_window->priv->view),
-            page_cache_mb * 1024 * 1024);
-    ev_view_set_model (EV_VIEW (ev_window->priv->view), ev_window->priv->model);
+    /* page_cache and model are already set in ev_window_create_new_tab */
 
 	ev_window->priv->password_view = ev_password_view_new (GTK_WINDOW (ev_window));
-	g_signal_connect_swapped (ev_window->priv->password_view,
-				  "unlock",
-				  NULL,
-				  ev_window);
+	/* Note: "unlock" handler removed - was NULL stub from GTK3 migration */
 	g_signal_connect_swapped (ev_window->priv->view, "external-link",
 				  G_CALLBACK (view_external_link_cb),
 				  ev_window);
@@ -6292,14 +6619,10 @@ ev_window_init (EvWindow *ev_window)
     g_object_ref (ev_window->priv->view);
     g_object_ref (ev_window->priv->password_view);
 
-    gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (ev_window->priv->scrolled_window),
-            ev_window->priv->view);
+    /* scrolled_window child is already set in ev_window_create_new_tab */
 
     /* Connect to model signals */
-    g_signal_connect_swapped (ev_window->priv->model,
-            "page-changed",
-            NULL,
-            ev_window);
+    /* Note: "page-changed" handler removed - was NULL stub from GTK3 migration */
     g_signal_connect (ev_window->priv->model,
             "notify::document",
             G_CALLBACK (ev_window_document_changed_cb),

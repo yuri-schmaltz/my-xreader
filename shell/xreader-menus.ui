@@ -9,6 +9,11 @@
           <attribute name="action">win.FileOpen</attribute>
         </item>
         <item>
+          <attribute name="label" translatable="yes">Open in New _Tab…</attribute>
+          <attribute name="action">win.TabNew</attribute>
+          <attribute name="accel">&lt;Primary&gt;t</attribute>
+        </item>
+        <item>
           <attribute name="label" translatable="yes">Op_en a Copy</attribute>
           <attribute name="action">win.FileOpenCopy</attribute>
         </item>
@@ -31,8 +36,9 @@
       </section>
       <section>
         <item>
-          <attribute name="label" translatable="yes">_Close</attribute>
-          <attribute name="action">win.FileCloseWindow</attribute>
+          <attribute name="label" translatable="yes">Close _Tab</attribute>
+          <attribute name="action">win.TabClose</attribute>
+          <attribute name="accel">&lt;Primary&gt;w</attribute>
         </item>
       </section>
     </submenu>
