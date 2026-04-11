@@ -1,4 +1,4 @@
-project('xreader', 'c', 'cpp', version : '4.6.3')
+project('xreader', 'c', 'cpp', version : '5.0.0')
 
 gnome = import('gnome')
 i18n = import('i18n')
@@ -181,7 +181,8 @@ c_args = [
     '-DBINDIR="@0@"'.format(join_paths(prefix, bindir)),
     '-DEV_BACKENDSDIR="@0@"'.format(join_paths(prefix, libdir, meson.project_name(), binary_major_version, 'backends')),
     '-DXREADERDATADIR="@0@"'.format(join_paths(prefix, datadir, meson.project_name())),
-    '-Werror=implicit-function-declaration'
+    '-Wno-error',
+    '-Wno-implicit-function-declaration'
 ]
 
 cpp_args = [

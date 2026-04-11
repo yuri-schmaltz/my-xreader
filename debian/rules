@@ -2,6 +2,8 @@
 
 TYPELIBDIR=$(shell pkg-config gobject-introspection-1.0 --variable libdir | sed -e 's/.//')
 
+export DEB_CFLAGS_MAINT_APPEND = -Wno-error -Wno-error=deprecated-declarations
+
 %:
 	dh $@
 
@@ -16,8 +18,8 @@ override_dh_auto_configure:
 		--buildtype=debugoptimized \
 		-D deprecated_warnings=false \
 		-D djvu=true \
-		-D dvi=true \
-		-D t1lib=true \
+		-D dvi=false \
+		-D t1lib=false \
 		-D pixbuf=false \
 		-D comics=true \
 		-D introspection=true \

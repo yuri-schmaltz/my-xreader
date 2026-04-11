@@ -1,3 +1,12 @@
+xreader (5.0.0) zena; urgency=medium
+
+  [ Antigravity ]
+  * Upgrade to GTK4 architecture
+  * Implement Multi-Tab Interface with EvTab Lifecycle Management
+  * Automate Release Pipeline for DEB, RPM and AppImage
+
+ -- Clement Lefebvre <root@linuxmint.com>  Fri, 10 Apr 2026 23:35:00 -0300
+
 xreader (4.6.3) zena; urgency=medium
 
   * l10n: Update translations
