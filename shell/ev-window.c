@@ -4913,39 +4913,47 @@ ev_window_dispose (GObject *object)
 
     priv->recent_ui_id = 0;
 
-    if (priv->model) {
-        g_signal_handlers_disconnect_by_func (priv->model,
-                NULL, /* removed */
-                window);
-        g_object_unref (priv->model);
-        priv->model = NULL;
-    }
+    priv->recent_ui_id = 0;
 
-    if (priv->document) {
-        g_object_unref (priv->document);
-        priv->document = NULL;
-    }
+    /* The following fields are per-tab, so priv->... are just weak pointers.
+     * We don't unref them here. We unref them by freeing all tabs. */
+    priv->model = NULL;
+    priv->document = NULL;
+    priv->view = NULL;
+    priv->metadata = NULL;
+    priv->bookmarks = NULL;
+    priv->monitor = NULL;
+    priv->history = NULL;
+    priv->load_job = NULL;
+    priv->reload_job = NULL;
+    priv->save_job = NULL;
+    priv->find_job = NULL;
+    priv->thumbnail_job = NULL;
 
-    if (priv->view) {
-        g_object_unref (priv->view);
-        priv->view = NULL;
+    /* Free all tabs */
+    GList *l;
+    for (l = priv->tabs; l != NULL; l = l->next) {
+        EvTab *tab = (EvTab *) l->data;
+        g_clear_object (&tab->model);
+        g_clear_object (&tab->document);
+        g_clear_object (&tab->history);
+        g_clear_object (&tab->metadata);
+        g_clear_object (&tab->bookmarks);
+        g_clear_object (&tab->monitor);
+        g_free (tab->uri);
+        g_free (tab->local_uri);
+        g_free (tab->search_string);
+        if (tab->load_job) ev_job_cancel (tab->load_job);
+        if (tab->find_job) ev_job_cancel (tab->find_job);
+        g_free (tab);
     }
+    g_list_free (priv->tabs);
+    priv->tabs = NULL;
+    priv->active_tab = NULL;
 
     if (priv->password_view) {
         g_object_unref (priv->password_view);
         priv->password_view = NULL;
-    }
-
-    if (priv->load_job) {
-        ev_window_clear_load_job (window);
-    }
-
-    if (priv->reload_job) {
-        ev_window_clear_reload_job (window);
-    }
-
-    if (priv->save_job) {
-        ev_window_clear_save_job (window);
     }
 
     if (priv->thumbnail_job) {
@@ -6189,6 +6197,36 @@ ev_window_tab_close_button_clicked (GtkButton *button, gpointer user_data)
 }
 
 static void
+ev_window_disconnect_model_signals (EvWindow *ev_window, EvDocumentModel *model)
+{
+    if (!model) return;
+    g_signal_handlers_disconnect_by_func (model, ev_window_document_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_zoom_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_sizing_mode_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_rotation_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_continuous_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_dual_mode_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_dual_mode_odd_pages_left_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_direction_changed_cb, ev_window);
+    g_signal_handlers_disconnect_by_func (model, ev_window_inverted_colors_changed_cb, ev_window);
+}
+
+static void
+ev_window_connect_model_signals (EvWindow *ev_window, EvDocumentModel *model)
+{
+    if (!model) return;
+    g_signal_connect (model, "notify::document", G_CALLBACK (ev_window_document_changed_cb), ev_window);
+    g_signal_connect (model, "notify::scale", G_CALLBACK (ev_window_zoom_changed_cb), ev_window);
+    g_signal_connect (model, "notify::sizing-mode", G_CALLBACK (ev_window_sizing_mode_changed_cb), ev_window);
+    g_signal_connect (model, "notify::rotation", G_CALLBACK (ev_window_rotation_changed_cb), ev_window);
+    g_signal_connect (model, "notify::continuous", G_CALLBACK (ev_window_continuous_changed_cb), ev_window);
+    g_signal_connect (model, "notify::dual-page", G_CALLBACK (ev_window_dual_mode_changed_cb), ev_window);
+    g_signal_connect (model, "notify::dual-odd-left", G_CALLBACK (ev_window_dual_mode_odd_pages_left_changed_cb), ev_window);
+    g_signal_connect (model, "notify::rtl", G_CALLBACK (ev_window_direction_changed_cb), ev_window);
+    g_signal_connect (model, "notify::inverted-colors", G_CALLBACK (ev_window_inverted_colors_changed_cb), ev_window);
+}
+
+static void
 ev_window_notebook_switch_page (GtkNotebook *notebook, GtkWidget *page,
                                 guint page_num, EvWindow *ev_window)
 {
@@ -6199,11 +6237,19 @@ ev_window_notebook_switch_page (GtkNotebook *notebook, GtkWidget *page,
         if (tab->view_box == page) {
             ev_window->priv->active_tab = tab;
 
+            if (ev_window->priv->model) {
+                ev_window_disconnect_model_signals (ev_window, ev_window->priv->model);
+            }
+
             /* Update priv pointers to current tab */
             ev_window->priv->view = tab->view;
             ev_window->priv->scrolled_window = tab->scrolled_window;
             ev_window->priv->model = tab->model;
             ev_window->priv->document = tab->document;
+
+            if (ev_window->priv->model) {
+                ev_window_connect_model_signals (ev_window, ev_window->priv->model);
+            }
             ev_window->priv->uri = tab->uri;
             ev_window->priv->metadata = tab->metadata;
             ev_window->priv->bookmarks = tab->bookmarks;
@@ -6616,50 +6662,14 @@ ev_window_init (EvWindow *ev_window)
     gtk_box_append (GTK_BOX (ev_window->priv->main_box),
             ev_window->priv->find_bar);
 
-    /* We own a ref on these widgets, as we can swap them in and out */
-    g_object_ref (ev_window->priv->view);
+    /* We own a ref on the password view, as we can swap it in and out */
     g_object_ref (ev_window->priv->password_view);
+
 
     /* scrolled_window child is already set in ev_window_create_new_tab */
 
     /* Connect to model signals */
-    /* Note: "page-changed" handler removed - was NULL stub from GTK3 migration */
-    g_signal_connect (ev_window->priv->model,
-            "notify::document",
-            G_CALLBACK (ev_window_document_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::scale",
-            G_CALLBACK (ev_window_zoom_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::sizing-mode",
-            G_CALLBACK (ev_window_sizing_mode_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::rotation",
-            G_CALLBACK (ev_window_rotation_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::continuous",
-            G_CALLBACK (ev_window_continuous_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::dual-page",
-            G_CALLBACK (ev_window_dual_mode_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::dual-odd-left",
-            G_CALLBACK (ev_window_dual_mode_odd_pages_left_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::rtl",
-            G_CALLBACK (ev_window_direction_changed_cb),
-            ev_window);
-    g_signal_connect (ev_window->priv->model,
-            "notify::inverted-colors",
-            G_CALLBACK (ev_window_inverted_colors_changed_cb),
-            ev_window);
+    ev_window_connect_model_signals (ev_window, ev_window->priv->model);
 
     /* Connect sidebar signals */
     g_signal_connect (ev_window->priv->sidebar,

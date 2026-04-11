@@ -410,16 +410,22 @@ ev_sidebar_document_changed_cb (EvDocumentModel *model,
 
 void
 ev_sidebar_set_model (EvSidebar       *sidebar,
-		      EvDocumentModel *model)
+                      EvDocumentModel *model)
 {
-	g_return_if_fail (EV_IS_SIDEBAR (sidebar));
-	g_return_if_fail (EV_IS_DOCUMENT_MODEL (model));
+    g_return_if_fail (EV_IS_SIDEBAR (sidebar));
+    g_return_if_fail (EV_IS_DOCUMENT_MODEL (model));
 
-	if (model == sidebar->priv->model)
-		return;
+    if (model == sidebar->priv->model)
+        return;
 
-	sidebar->priv->model = model;
-	g_signal_connect (model, "notify::document",
-			  G_CALLBACK (ev_sidebar_document_changed_cb),
-			  sidebar);
+    if (sidebar->priv->model) {
+        g_signal_handlers_disconnect_by_func (sidebar->priv->model,
+                                              ev_sidebar_document_changed_cb,
+                                              sidebar);
+    }
+
+    sidebar->priv->model = model;
+    g_signal_connect (model, "notify::document",
+                      G_CALLBACK (ev_sidebar_document_changed_cb),
+                      sidebar);
 }
