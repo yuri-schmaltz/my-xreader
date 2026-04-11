@@ -568,7 +568,19 @@ _ev_application_open_uri_at_dest (EvApplication  *application,
 {
     EvWindow *ev_window;
 
+    /* First try to find an empty window */
     ev_window = ev_application_get_empty_window (application, display);
+    if (!ev_window) {
+        /* No empty window found - try to reuse ANY existing window (opens as tab) */
+        GList *windows = gtk_application_get_windows (GTK_APPLICATION (application));
+        GList *l;
+        for (l = windows; l != NULL; l = l->next) {
+            if (EV_IS_WINDOW (l->data)) {
+                ev_window = EV_WINDOW (l->data);
+                break;
+            }
+        }
+    }
     if (!ev_window)
         ev_window = EV_WINDOW (ev_window_new ());
 
@@ -598,22 +610,13 @@ ev_application_open_uri_at_dest (EvApplication  *application,
 {
     g_return_if_fail (uri != NULL);
 
-    if (application->uri && strcmp (application->uri, uri) != 0) {
-        /* spawn a new xreader process */
-        ev_spawn (uri, display, dest, mode, search_string, timestamp);
-        return;
-    } else if (!application->uri) {
+    /* Multi-tab: always open in the same instance instead of spawning
+     * a new process. ev_window_open_uri will create a new tab. */
+    if (!application->uri) {
         application->uri = g_strdup (uri);
     }
 
-#ifdef ENABLE_DBUS
-    /* Register the uri or send Reload to
-     * remote instance if already registered
-     */
-    ev_application_register_uri (application, uri, display, dest, mode, search_string, timestamp);
-#else
     _ev_application_open_uri_at_dest (application, uri, display, dest, mode, search_string, timestamp);
-#endif /* ENABLE_DBUS */
 }
 
 /**

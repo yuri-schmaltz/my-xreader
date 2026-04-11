@@ -651,6 +651,9 @@ static void
 set_widget_visibility (GtkWidget *widget,
                        gboolean visible)
 {
+    if (widget == NULL)
+        return;
+
     g_assert (GTK_IS_WIDGET (widget));
 
     if (visible)
@@ -6391,10 +6394,8 @@ ev_window_init (EvWindow *ev_window)
     }
 #endif /* ENABLE_DBUS */
 
-    /* disable automatic menubar handling, since we show our regular
-	 * menubar together with the app menu.
-	 */
-	gtk_application_window_set_show_menubar (GTK_APPLICATION_WINDOW (ev_window), FALSE);
+    /* GTK4: enable the application menubar */
+	gtk_application_window_set_show_menubar (GTK_APPLICATION_WINDOW (ev_window), TRUE);
 
     ev_window->priv->menubar_skip_release = FALSE;
     ev_window->priv->menubar_show_queued = FALSE;
